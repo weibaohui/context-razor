@@ -73,6 +73,7 @@ window.__ModuleLoader__.load({
       stats: '{nodes} 条 · 合计 ≈{tokens} token{mode}',
       modeHeuristic: '（启发式估算：词表未加载）',
       kindUser: '用户',
+      kindInjected: '注入',
       kindAssistant: '助手',
       kindTool: '工具',
       emptyContext: '该会话上下文为空',
@@ -109,6 +110,7 @@ window.__ModuleLoader__.load({
       stats: '{nodes} entries · total ≈{tokens} tokens{mode}',
       modeHeuristic: ' (heuristic: ranks unavailable)',
       kindUser: 'User',
+      kindInjected: 'injected',
       kindAssistant: 'Assistant',
       kindTool: 'Tool',
       emptyContext: 'This session has no context entries',
@@ -148,6 +150,31 @@ window.__ModuleLoader__.load({
     }
 
     const formatNum = (n) => Number.isFinite(n) ? n.toLocaleString('en-US') : '-'
+
+    /** 相对时间：30 天外落日期，其余 d/h/m/now（ts 兼容 epoch 毫秒与 ISO 串）。 */
+    function formatTime(ts, now) {
+      if (!ts) return ''
+      const t = typeof ts === 'number' ? ts : Date.parse(ts)
+      if (!Number.isFinite(t)) return ''
+      const ref = typeof now === 'number' ? now : Date.now()
+      const diff = Math.max(0, ref - t)
+      if (diff > 30 * 86400000) return new Date(t).toLocaleDateString()
+      if (diff > 86400000) return Math.floor(diff / 86400000) + 'd'
+      if (diff > 3600000) return Math.floor(diff / 3600000) + 'h'
+      if (diff > 60000) return Math.floor(diff / 60000) + 'm'
+      return 'now'
+    }
+
+    /** 行首 chip 的文案与提示：工具结果显示工具名，注入类 user 消息标「注入」。 */
+    function entryChip(entry, t) {
+      if (entry.kind === 'tool') {
+        return { kind: 'tool', label: entry.tool || t('kindTool'), title: entry.tool }
+      }
+      if (entry.kind === 'user' && entry.sourceKind && entry.sourceKind !== 'user') {
+        return { kind: 'user', label: t('kindInjected'), title: [entry.sourceKind, entry.sourceForm, entry.sourcePlugin].filter(Boolean).join(' · ') }
+      }
+      return { kind: entry.kind, label: t(kindI18n(entry.kind)) }
+    }
 
     // ── 彩虹分级：颜色越暖 = 占用越多 ────────────────────────────────────────
     // 固定对数档位（相邻约 ×2.5），跨会话语义稳定：绿→黄绿→黄→橙→红→品红。
@@ -235,7 +262,7 @@ window.__ModuleLoader__.load({
 
     // ── Small building blocks ────────────────────────────────────────────────
 
-    const Chip = ({ kind, label }) => h('span', { className: 'rz-chip ' + kind }, label)
+    const Chip = ({ kind, label, title }) => h('span', { className: 'rz-chip ' + kind, title }, label)
 
     const TokenBadge = ({ entry }) => {
       const tier = tierOf(entry)
@@ -261,8 +288,10 @@ window.__ModuleLoader__.load({
         h('div', { className: 'rz-dlg', onClick: e => e.stopPropagation() },
           h('h3', null, t('detailTitle') + ' · ' + t('seqLabel', { seq: detail.seq })),
           h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
-            h(Chip, { kind: detail.kind, label: t(kindI18n(detail.kind)) }),
+            h(Chip, { ...entryChip(detail, t) }),
             h(TokenBadge, { entry: detail }),
+            h('span', { className: 'rz-label' }, formatTime(detail.time)),
+            h('span', { className: 'rz-label', title: 'seq ' + detail.seq }, new Date(typeof detail.time === 'number' ? detail.time : Date.parse(detail.time)).toLocaleString()),
             h('span', { className: 'rz-label' }, t('detailChars', { chars: formatNum(detail.chars) })),
             detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
               input: formatNum(detail.usage.input), output: formatNum(detail.usage.output),
@@ -354,7 +383,7 @@ window.__ModuleLoader__.load({
       const openDetail = (entry) => {
         setDetail(entry)
         getJson(`${API}/entry?session=${encodeURIComponent(sessionId)}&seq=${entry.seq}`)
-          .then(d => setDetail(cur => (cur && cur.seq === entry.seq) ? { ...cur, text: d.text, tokens: d.tokens } : cur))
+          .then(d => setDetail(cur => (cur && cur.seq === entry.seq) ? { ...cur, text: d.text, tokens: d.tokens, tool: d.tool, sourceKind: d.sourceKind, sourceForm: d.sourceForm, sourcePlugin: d.sourcePlugin } : cur))
           .catch(() => {})
       }
 
@@ -412,8 +441,9 @@ window.__ModuleLoader__.load({
                       role: 'button', tabIndex: 0, onClick: () => toggleRow(entry.seq),
                       onKeyDown: e => e.key === 'Enter' && toggleRow(entry.seq) },
                     h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
-                    h(Chip, { kind: entry.kind, label: t(kindI18n(entry.kind)) }),
+                    h(Chip, { ...entryChip(entry, t) }),
                     h('span', { className: 'rz-row-preview', title: entry.preview }, entry.preview || ' '),
+                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatTime(entry.time)),
                     h(TokenBadge, { entry }),
                     h('button', { className: 'rz-btn', style: { minHeight: 24, padding: '2px 8px' },
                         onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'))
@@ -432,7 +462,7 @@ window.__ModuleLoader__.load({
     module.exports = {
       name: CLIENT_NAME,
       inject: ['slots', 'locale'],
-      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS },
+      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS, formatTime, entryChip },
       __boot(container, opts = {}) {
         ensureStyles()
         const t = opts.t || ((key, vars) => {

@@ -44,3 +44,24 @@ test('tierOf maps token counts onto the rainbow tiers', () => {
   assert.equal(tierOf({ tokens: 8568 }), 5)  // 品红
   assert.equal(tierOf({}), 0)
 })
+
+test('formatTime renders relative buckets with injectable now', () => {
+  const { formatTime } = plugin.__internals
+  const now = 1800000000000
+  assert.equal(formatTime(now - 30 * 60000, now), '30m')
+  assert.equal(formatTime(now - 2 * 3600000, now), '2h')
+  assert.equal(formatTime(now - 3 * 86400000, now), '3d')
+  assert.equal(formatTime(now, now), 'now')
+  assert.equal(formatTime(undefined, now), '')
+})
+
+test('entryChip: tool shows the tool name, injected user messages are marked', () => {
+  const { entryChip, EN } = plugin.__internals
+  const t = (key, vars) => { let out = EN[key] ?? key; if (vars) for (const [k, v] of Object.entries(vars)) out = out.split('{' + k + '}').join(String(v)); return out }
+  assert.deepEqual(entryChip({ kind: 'tool', tool: 'Read' }, t), { kind: 'tool', label: 'Read', title: 'Read' })
+  assert.deepEqual(entryChip({ kind: 'tool' }, t), { kind: 'tool', label: 'Tool', title: undefined })
+  const injected = entryChip({ kind: 'user', sourceKind: 'plugin', sourcePlugin: '@weibaohui/x', sourceForm: 'notice' }, t)
+  assert.equal(injected.label, 'injected')
+  assert.equal(injected.title, 'plugin · notice · @weibaohui/x')
+  assert.equal(entryChip({ kind: 'user', sourceKind: 'user' }, t).label, 'User')
+})

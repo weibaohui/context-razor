@@ -87,12 +87,19 @@ function sessionBusy(session) {
 }
 
 /**
- * 当前 surface 投影成条目列表：seq 有序（模型可见顺序）、逐条文本、
- * token 估算。被此前 compaction/prune 影子化的节点本就不在 surface.nodes
- * 里——列表即模型此刻真实可见的上下文。
+ * 当前 surface 投影成条目列表：seq 有序（模型可见顺序）、逐条文本、token 估算、
+ * 时间、工具名（tool/result 按 callId 关联日志里的 tool/call）与注入来源。
+ * 被此前 compaction/prune 影子化的节点本就不在 surface.nodes 里——列表即模型
+ * 此刻真实可见的上下文。
  */
 function projectContext(session) {
   const bySeq = new Map(session.events.map((event) => [event.seq, event]))
+  const toolNames = new Map()
+  for (const event of session.events) {
+    if (event.type === 'tool/call' && event.data && typeof event.data.callId === 'string') {
+      toolNames.set(event.data.callId, typeof event.data.name === 'string' ? event.data.name : undefined)
+    }
+  }
   const entries = []
   let totalTokens = 0
   let mode = 'cl100k'
@@ -103,11 +110,16 @@ function projectContext(session) {
     const { tokens, mode: m } = countTokens(text)
     mode = m
     const usage = event.type === 'assistant/message' ? event.data.usage : undefined
+    const source = event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined
     entries.push({
       seq,
       kind: entryKindOf(event.type),
       time: event.time,
       turn: typeof event.data.turn === 'number' ? event.data.turn : undefined,
+      tool: event.type === 'tool/result' ? toolNames.get(event.data.message && event.data.message.source && event.data.message.source.callId) : undefined,
+      sourceKind: source ? source.kind : undefined,
+      sourceForm: source ? source.form : undefined,
+      sourcePlugin: source ? source.plugin : undefined,
       chars: text.length,
       tokens,
       preview: text.length > 220 ? text.slice(0, 220) + '…' : text,
@@ -270,7 +282,21 @@ module.exports = {
             const event = session.events.find((candidate) => candidate.seq === seq)
             if (event === undefined) { fail(404, 'entry not found'); return }
             const text = entryText(event)
-            sendJson(200, { seq, kind: entryKindOf(event.type), time: event.time, tokens: countTokens(text).tokens, text })
+            const toolName = event.type === 'tool/result' && event.data.message
+              ? session.events.find((candidate) => candidate.type === 'tool/call' && candidate.data.callId === event.data.message.source.callId)
+              : undefined
+            const source = event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined
+            sendJson(200, {
+              seq,
+              kind: entryKindOf(event.type),
+              time: event.time,
+              tokens: countTokens(text).tokens,
+              text,
+              tool: toolName && typeof toolName.data.name === 'string' ? toolName.data.name : undefined,
+              sourceKind: source ? source.kind : undefined,
+              sourceForm: source ? source.form : undefined,
+              sourcePlugin: source ? source.plugin : undefined,
+            })
             return
           }
 

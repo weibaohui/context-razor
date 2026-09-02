@@ -145,12 +145,17 @@ test('GET /sessions lists sessions with light metadata', async () => {
   assert.equal(row.busy, false)
 })
 
-test('GET /context projects every surface entry with tokens', async () => {
-  const s = fakeSession({ id: 's-ctx', events: demoEvents() })
+test('GET /context projects every surface entry with tokens, tool name and source', async () => {
+  // tool/call 不占 surface，但按 callId 关联出工具名；末尾追加避免影响删除类用例的 seq
+  const events = demoEvents().concat([
+    { type: 'tool/call', data: { turn: 0, step: 1, callId: 'c1', name: 'Read', arguments: '{"path":"parser.ts"}' } },
+    { type: 'user/message', data: { id: 'inj', role: 'user', content: [{ type: 'text', text: 'injected context' }], source: { kind: 'plugin', plugin: '@weibaohui/dsh-continue', form: 'notice' } } },
+  ])
+  const s = fakeSession({ id: 's-ctx', events })
   const { call } = setupPlugin({ sessions: new Map([[s.id, s]]) })
   const res = await call('GET', '/context-razor/api/context?session=s-ctx')
   assert.equal(res.status, 200)
-  assert.equal(res.payload.entries.length, 3)
+  assert.equal(res.payload.entries.length, 4)
   assert.equal(res.payload.encoder, 'cl100k')
   assert.ok(res.payload.totalTokens > 0)
   const [user, assistant, tool] = res.payload.entries
@@ -158,6 +163,11 @@ test('GET /context projects every surface entry with tokens', async () => {
   assert.equal(user.preview, 'please help me refactor the parser module')
   assert.equal(assistant.usage.input, 1200)
   assert.equal(assistant.usage.output, 40)
+  assert.equal(tool.tool, 'Read') // tool/result ← tool/call 按 callId 关联
+  assert.equal(user.sourceKind, 'user')
+  const injected = res.payload.entries.find((e) => e.sourceKind === 'plugin')
+  assert.equal(injected.sourcePlugin, '@weibaohui/dsh-continue')
+  assert.equal(injected.sourceForm, 'notice')
   assert.ok(assistant.tokens > 0 && tool.tokens > 0)
   const unknown = await call('GET', '/context-razor/api/context?session=nope')
   assert.equal(unknown.status, 404)
