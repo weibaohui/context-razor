@@ -20,7 +20,7 @@ test('locale dictionaries are zh/en with identical key sets', () => {
   assert.ok(zhKeys.length >= 30)
 })
 
-test('sortEntries orders by tokens desc with ties by seq, order mode untouched', () => {
+test('sortEntries: tokens desc with ties by seq, seq mode by original seq, order mode untouched', () => {
   const rows = [
     { seq: 1, tokens: 3 },
     { seq: 2, tokens: 9 },
@@ -29,6 +29,8 @@ test('sortEntries orders by tokens desc with ties by seq, order mode untouched',
   ]
   assert.deepEqual(sortEntries(rows, 'tokens').map(r => r.seq), [2, 1, 3, 4])
   assert.deepEqual(sortEntries(rows, 'order').map(r => r.seq), [1, 2, 3, 4])
+  // seq 模式：乱序输入按原始序号升序重排（服务端 groupRuns 同款保证）
+  assert.deepEqual(sortEntries([rows[2], rows[0], rows[3], rows[1]], 'seq').map(r => r.seq), [1, 2, 3, 4])
   // 不改变原数组
   assert.deepEqual(rows.map(r => r.seq), [1, 2, 3, 4])
 })
