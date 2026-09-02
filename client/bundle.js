@@ -177,7 +177,8 @@ window.__ModuleLoader__.load({
     // ── Token-based stylesheet (light/dark adaptive by construction) ────────
 
     const STYLE = `<style>
-    .rz-page{position:relative;display:flex;flex-direction:column;gap:12px;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsw-font-sm-14,14px)}
+    .rz-page,.rz-page *{box-sizing:border-box}
+    .rz-page{position:relative;display:flex;flex-direction:column;gap:12px;padding:16px 20px;min-width:0;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsw-font-sm-14,14px)}
     .rz-hint{color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:1.5}
     .rz-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .rz-spacer{flex:1}
