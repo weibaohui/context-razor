@@ -45,14 +45,13 @@ test('tierOf maps token counts onto the rainbow tiers', () => {
   assert.equal(tierOf({}), 0)
 })
 
-test('formatTime renders relative buckets with injectable now', () => {
-  const { formatTime } = plugin.__internals
-  const now = 1800000000000
-  assert.equal(formatTime(now - 30 * 60000, now), '30m')
-  assert.equal(formatTime(now - 2 * 3600000, now), '2h')
-  assert.equal(formatTime(now - 3 * 86400000, now), '3d')
-  assert.equal(formatTime(now, now), 'now')
-  assert.equal(formatTime(undefined, now), '')
+test('formatDateTime renders a full timestamp and tolerates bad input', () => {
+  const { formatDateTime } = plugin.__internals
+  const out = formatDateTime(1800000000000)
+  assert.equal(typeof out, 'string')
+  assert.ok(out.length >= 8) // 完整日期+时间，非相对缩写
+  assert.equal(formatDateTime(undefined), '')
+  assert.equal(formatDateTime('not-a-date'), '')
 })
 
 test('entryChip: tool shows the tool name, injected user messages are marked', () => {

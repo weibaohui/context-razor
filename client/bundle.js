@@ -151,18 +151,12 @@ window.__ModuleLoader__.load({
 
     const formatNum = (n) => Number.isFinite(n) ? n.toLocaleString('en-US') : '-'
 
-    /** 相对时间：30 天外落日期，其余 d/h/m/now（ts 兼容 epoch 毫秒与 ISO 串）。 */
-    function formatTime(ts, now) {
+    /** 完整日期时间（短格式：2026/9/2 11:03；ts 兼容 epoch 毫秒与 ISO 串）。 */
+    function formatDateTime(ts) {
       if (!ts) return ''
       const t = typeof ts === 'number' ? ts : Date.parse(ts)
       if (!Number.isFinite(t)) return ''
-      const ref = typeof now === 'number' ? now : Date.now()
-      const diff = Math.max(0, ref - t)
-      if (diff > 30 * 86400000) return new Date(t).toLocaleDateString()
-      if (diff > 86400000) return Math.floor(diff / 86400000) + 'd'
-      if (diff > 3600000) return Math.floor(diff / 3600000) + 'h'
-      if (diff > 60000) return Math.floor(diff / 60000) + 'm'
-      return 'now'
+      try { return new Date(t).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) } catch { return new Date(t).toLocaleString() }
     }
 
     /** 行首 chip 的文案与提示：工具结果显示工具名，注入类 user 消息标「注入」。 */
@@ -230,7 +224,7 @@ window.__ModuleLoader__.load({
     .rz-row{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);cursor:pointer;text-align:left;width:100%}
     .rz-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
     .rz-row.checked{border-color:var(--dsw-alias-state-business-primary)}
-    .rz-row-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}
+    .rz-row-preview{flex:0 1 340px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}
     .rz-row-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
     .rz-badge.tier-0{color:hsl(120,55%,40%);border-color:hsla(120,55%,40%,.45);background:hsla(120,55%,40%,.10)}
     .rz-badge.tier-1{color:hsl(90,60%,38%);border-color:hsla(90,60%,38%,.45);background:hsla(90,60%,38%,.10)}
@@ -290,8 +284,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
             h(Chip, { ...entryChip(detail, t) }),
             h(TokenBadge, { entry: detail }),
-            h('span', { className: 'rz-label' }, formatTime(detail.time)),
-            h('span', { className: 'rz-label', title: 'seq ' + detail.seq }, new Date(typeof detail.time === 'number' ? detail.time : Date.parse(detail.time)).toLocaleString()),
+            h('span', { className: 'rz-label', title: 'seq ' + detail.seq }, formatDateTime(detail.time)),
             h('span', { className: 'rz-label' }, t('detailChars', { chars: formatNum(detail.chars) })),
             detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
               input: formatNum(detail.usage.input), output: formatNum(detail.usage.output),
@@ -441,10 +434,10 @@ window.__ModuleLoader__.load({
                       role: 'button', tabIndex: 0, onClick: () => toggleRow(entry.seq),
                       onKeyDown: e => e.key === 'Enter' && toggleRow(entry.seq) },
                     h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
+                    h(TokenBadge, { entry }),
                     h(Chip, { ...entryChip(entry, t) }),
                     h('span', { className: 'rz-row-preview', title: entry.preview }, entry.preview || ' '),
-                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatTime(entry.time)),
-                    h(TokenBadge, { entry }),
+                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)),
                     h('button', { className: 'rz-btn', style: { minHeight: 24, padding: '2px 8px' },
                         onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'))
                 } })),
@@ -462,7 +455,7 @@ window.__ModuleLoader__.load({
     module.exports = {
       name: CLIENT_NAME,
       inject: ['slots', 'locale'],
-      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS, formatTime, entryChip },
+      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS, formatDateTime, entryChip },
       __boot(container, opts = {}) {
         ensureStyles()
         const t = opts.t || ((key, vars) => {
