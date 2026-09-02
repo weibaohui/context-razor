@@ -214,7 +214,8 @@ const STYLE = `<style>
 .rz-row{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);cursor:pointer;text-align:left;width:100%}
 .rz-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .rz-row.checked{border-color:var(--dsw-alias-state-business-primary)}
-.rz-row-preview{flex:0 1 340px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}
+.rz-row-preview{flex:0 1 340px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px;text-decoration:none}
+.rz-row-preview:hover{text-decoration:underline;text-underline-offset:3px}
 .rz-row-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
 .rz-badge.tier-0{color:hsl(120,55%,40%);border-color:hsla(120,55%,40%,.45);background:hsla(120,55%,40%,.10)}
 .rz-badge.tier-1{color:hsl(90,60%,38%);border-color:hsla(90,60%,38%,.45);background:hsla(90,60%,38%,.10)}
@@ -426,10 +427,9 @@ function RazorPage({ t, fixedSessionId }) {
                 h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
                 h(TokenBadge, { entry }),
                 h(Chip, { ...entryChip(entry, t) }),
-                h('span', { className: 'rz-row-preview', title: entry.preview }, entry.preview || ' '),
-                h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)),
-                h('button', { className: 'rz-btn', style: { minHeight: 24, padding: '2px 8px' },
-                    onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'))
+                h('span', { className: 'rz-row-preview', title: entry.preview,
+                    onClick: e => { e.stopPropagation(); openDetail(entry) } }, entry.preview || ' '),
+                h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)))
             } })),
       detail && h(DetailModal, { detail, t, onClose: () => setDetail(null) }),
       confirming && h(ConfirmDialog, { n: selected.size, tokens: formatNum(selectedTokens), deleting, t,
