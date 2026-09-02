@@ -268,7 +268,8 @@ window.__ModuleLoader__.load({
 
     // ── Page ────────────────────────────────────────────────────────────────
 
-    function RazorPage({ t }) {
+    function RazorPage({ t, fixedSessionId }) {
+      useEffect(ensureStyles, [])
       const [sessions, setSessions] = useState(null)
       const [sessionId, setSessionId] = useState('')
       const [context, setContext] = useState(null)
@@ -290,6 +291,11 @@ window.__ModuleLoader__.load({
 
       const loadSessions = () => getJson(API + '/sessions').then(d => setSessions(d.sessions || [])).catch(e => setError(e.message))
       useEffect(() => { loadSessions() }, [])
+
+      // 会话视图挂载：跟随当前会话（下拉仍可切到别的会话）
+      useEffect(() => {
+        if (fixedSessionId) { sessionRef.current = fixedSessionId; setSessionId(fixedSessionId) }
+      }, [fixedSessionId])
 
       const loadContext = (id) => {
         if (!id) { setContext(null); return }
@@ -462,21 +468,20 @@ window.__ModuleLoader__.load({
             }
           }
         } catch (e) { try { console.error('[context-razor] locale init:', e) } catch {} }
+        // 会话视图标签：order 30 排在 Chat(0)/Trajectory(10)/Context(20)/Hermes Loop(25) 之后
         ctx.effect(() => {
           try {
-            ctx.slots.inject('settings.section', () => ctx.slots.register({
-              name: 'settings.section',
+            ctx.slots.inject('conversation.view', () => ctx.slots.register({
+              name: 'conversation.view',
               id: CLIENT_NAME,
-              order: 91,
+              order: 30,
               locale: NS,
               label: () => t('title'),
-              inject: () => ({}),
-            }, function RazorSectionSlot() {
-              useEffect(ensureStyles, [])
-              return h(RazorPage, { t })
+            }, function RazorViewSlot(props) {
+              return h(RazorPage, { t, fixedSessionId: props && props.sessionId })
             }))
-          } catch (e) { (globalThis.__rzErrors = globalThis.__rzErrors || []).push('settings:' + (e && e.message)); throw e }
-        }, 'context-razor: settings section')
+          } catch (e) { (globalThis.__rzErrors = globalThis.__rzErrors || []).push('conversation.view:' + (e && e.message)); throw e }
+        }, 'context-razor: conversation view tab')
       },
     }
 

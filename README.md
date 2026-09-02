@@ -21,7 +21,7 @@
 dsh plugin --profile web add @weibaohui/context-razor -w
 ```
 
-装完重启 `dsh web` 即生效。入口：设置窗口 → 上下文剃刀。
+装完重启 `dsh web` 即生效。入口：打开会话 → 顶部「上下文剃刀」标签（Hermes Loop 右侧），自动锁定当前会话。
 
 ## 删除的实现方式
 
