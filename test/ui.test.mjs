@@ -9,7 +9,7 @@ const plugin = require('../client/index.js')
 const { NS, ZH, EN, overThreshold, sortEntries } = plugin.__internals
 
 test('client module declares slots + locale injects', () => {
-  assert.equal(plugin.name, '@weibaohui/dsh-razor')
+  assert.equal(plugin.name, '@weibaohui/context-razor')
   assert.deepEqual(plugin.inject.sort(), ['locale', 'slots'])
 })
 

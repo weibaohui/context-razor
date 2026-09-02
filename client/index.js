@@ -44,7 +44,7 @@ const prim = (name) => P && P[name]
 
 // ── Locale ───────────────────────────────────────────────────────────────
 
-const NS = 'dshRazor'
+const NS = 'contextRazor'
 
 const ZH = {
   title: '上下文剃刀',
@@ -130,10 +130,10 @@ const EN = {
 
 // ── Pure helpers ────────────────────────────────────────────────────────
 
-const API = '/dsh-razor/api'
+const API = '/context-razor/api'
 const PAGE_SIZE = 150
 const DEFAULT_THRESHOLD = 500
-const THRESHOLD_KEY = 'dsh-razor-threshold'
+const THRESHOLD_KEY = 'context-razor-threshold'
 
 const kindI18n = (key) => 'kind' + key[0].toUpperCase() + key.slice(1)
 
@@ -417,7 +417,7 @@ function RazorPage({ t }) {
 
 // ── Plugin plane contract ────────────────────────────────────────────────
 
-const CLIENT_NAME = '@weibaohui/dsh-razor'
+const CLIENT_NAME = '@weibaohui/context-razor'
 
 module.exports = {
   name: CLIENT_NAME,
@@ -451,7 +451,7 @@ module.exports = {
           return out
         }
       }
-    } catch (e) { try { console.error('[dsh-razor] locale init:', e) } catch {} }
+    } catch (e) { try { console.error('[context-razor] locale init:', e) } catch {} }
     ctx.effect(() => {
       try {
         ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -466,6 +466,6 @@ module.exports = {
           return h(RazorPage, { t })
         }))
       } catch (e) { (globalThis.__rzErrors = globalThis.__rzErrors || []).push('settings:' + (e && e.message)); throw e }
-    }, 'dsh-razor: settings section')
+    }, 'context-razor: settings section')
   },
 }

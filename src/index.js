@@ -18,7 +18,7 @@ const { join } = require('node:path')
 // ── token 计数（js-tiktoken cl100k_base，与 skills-management 同源同值）──
 // 降级模式退回宿主 tokenMeter 同款 chars/4 启发式（token 计数是本插件
 // 核心功能，不能像 skills-management 那样直接不显示）。
-const RAZOR_PLUGIN_NAME = '@weibaohui/dsh-razor'
+const RAZOR_PLUGIN_NAME = '@weibaohui/context-razor'
 let usageEncoder = null
 let usageEncoderFailed = false
 function usageEncoderLazy() {
@@ -163,7 +163,7 @@ function deleteEntries(session, wantedSeqs) {
     })
     const summary = `已删除 ${run.length} 条历史（约 ${runTokens} token）`
     const marker = createUserMessage({
-      content: [{ type: 'text', text: `[dsh-razor] 此处原有 ${run.length} 条历史消息（约 ${runTokens} token）已被用户删除以保持上下文聚焦；如后续对话需要被删部分的细节，请向用户确认。` }],
+      content: [{ type: 'text', text: `[context-razor] 此处原有 ${run.length} 条历史消息（约 ${runTokens} token）已被用户删除以保持上下文聚焦；如后续对话需要被删部分的细节，请向用户确认。` }],
       source: { kind: 'plugin', plugin: RAZOR_PLUGIN_NAME, form: 'notice', summary },
     })
     const replacement = session.append('user/message', marker, {
@@ -200,14 +200,14 @@ function loadCreateUserMessage() {
 const createUserMessage = loadCreateUserMessage() ?? ((input) => ({ ...input, id: randomUUID(), role: 'user' }))
 
 module.exports = {
-  name: 'dsh-razor',
+  name: 'context-razor',
   inject: ['sessions', 'webServer'],
   __internals: { countTokens, entryText, groupRuns, projectContext, sessionBusy, deleteEntries, usageMemo },
 
   apply(ctx) {
     ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
-      path: '/dsh-razor/api',
+      path: '/context-razor/api',
       handler: async (req, res) => {
         try {
           const url = new URL(req.url || '/', 'http://dsh.local')
@@ -229,8 +229,8 @@ module.exports = {
           })
           const fail = (status, error) => sendJson(status, { error })
 
-          // GET /dsh-razor/api/sessions → 会话清单（轻量，不算 token）
-          if (req.method === 'GET' && apiPath.endsWith('/dsh-razor/api/sessions')) {
+          // GET /context-razor/api/sessions → 会话清单（轻量，不算 token）
+          if (req.method === 'GET' && apiPath.endsWith('/context-razor/api/sessions')) {
             const sessions = (ctx.sessions.list() || [])
               .map((session) => ({
                 id: session.id,
@@ -245,8 +245,8 @@ module.exports = {
             return
           }
 
-          // GET /dsh-razor/api/context?session= → 逐条投影
-          if (req.method === 'GET' && apiPath.endsWith('/dsh-razor/api/context')) {
+          // GET /context-razor/api/context?session= → 逐条投影
+          if (req.method === 'GET' && apiPath.endsWith('/context-razor/api/context')) {
             const session = ctx.sessions.get(query.get('session') || '')
             if (session === undefined) { fail(404, 'session not found'); return }
             const { entries, totalTokens, mode } = projectContext(session)
@@ -262,8 +262,8 @@ module.exports = {
             return
           }
 
-          // GET /dsh-razor/api/entry?session=&seq= → 单条全文
-          if (req.method === 'GET' && apiPath.endsWith('/dsh-razor/api/entry')) {
+          // GET /context-razor/api/entry?session=&seq= → 单条全文
+          if (req.method === 'GET' && apiPath.endsWith('/context-razor/api/entry')) {
             const session = ctx.sessions.get(query.get('session') || '')
             if (session === undefined) { fail(404, 'session not found'); return }
             const seq = Number(query.get('seq'))
@@ -274,8 +274,8 @@ module.exports = {
             return
           }
 
-          // POST /dsh-razor/api/delete { session, seqs } → 精确裁剪
-          if (req.method === 'POST' && apiPath.endsWith('/dsh-razor/api/delete')) {
+          // POST /context-razor/api/delete { session, seqs } → 精确裁剪
+          if (req.method === 'POST' && apiPath.endsWith('/context-razor/api/delete')) {
             const body = await readJsonBody()
             const session = ctx.sessions.get(typeof body.session === 'string' ? body.session : '')
             if (session === undefined) { fail(404, 'session not found'); return }
@@ -298,6 +298,6 @@ module.exports = {
           res.end(payload)
         }
       },
-    }), 'dsh-razor: web api')
+    }), 'context-razor: web api')
   },
 }

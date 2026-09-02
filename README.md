@@ -1,7 +1,7 @@
-# @weibaohui/dsh-razor
+# @weibaohui/context-razor
 
 [![DSH plugin](https://img.shields.io/badge/dsh-plugin-green)](https://github.com/topics/dsh-plugin)
-[![npm version](https://img.shields.io/npm/v/@weibaohui/dsh-razor)](https://www.npmjs.com/package/@weibaohui/dsh-razor)
+[![npm version](https://img.shields.io/npm/v/@weibaohui/context-razor)](https://www.npmjs.com/package/@weibaohui/context-razor)
 
 **上下文剃刀**：把当前会话上下文逐条列出来——角色、预览、≈token（cl100k_base 估算，与技能市场同词表）——超阈值标红，勾选后精确裁剪。压缩不知道裁了什么，剃刀让你自己挑。
 
@@ -18,7 +18,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add @weibaohui/dsh-razor -w
+dsh plugin --profile web add @weibaohui/context-razor -w
 ```
 
 装完重启 `dsh web` 即生效。入口：设置窗口 → 上下文剃刀。
