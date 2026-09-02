@@ -39,3 +39,15 @@ test('sortEntries orders by tokens desc with ties by seq, order mode untouched',
   // 不改变原数组
   assert.deepEqual(rows.map(r => r.seq), [1, 2, 3, 4])
 })
+
+test('tierOf maps token counts onto the rainbow tiers', () => {
+  const { tierOf } = plugin.__internals
+  assert.equal(tierOf({ tokens: 29 }), 0)    // 绿
+  assert.equal(tierOf({ tokens: 85 }), 0)
+  assert.equal(tierOf({ tokens: 201 }), 1)   // 黄绿
+  assert.equal(tierOf({ tokens: 800 }), 2)   // 黄
+  assert.equal(tierOf({ tokens: 1200 }), 3)  // 橙
+  assert.equal(tierOf({ tokens: 2222 }), 4)  // 红
+  assert.equal(tierOf({ tokens: 8568 }), 5)  // 品红
+  assert.equal(tierOf({}), 0)
+})

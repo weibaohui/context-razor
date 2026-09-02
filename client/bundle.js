@@ -59,8 +59,7 @@ window.__ModuleLoader__.load({
     const ZH = {
       title: '上下文剃刀',
       hint: '逐条列出会话上下文（≈token 为 cl100k_base 估算，与技能市场同词表）。删除 = 从模型视野移除（append-only 日志保留痕迹，不可恢复），不经 LLM 总结。',
-      sessionLabel: '会话',
-      pickSession: '选择会话…',
+      pickSession: '在会话顶部标签打开以查看上下文',
       loading: '正在加载…',
       refresh: '刷新',
       busyTag: '运行中',
@@ -100,8 +99,7 @@ window.__ModuleLoader__.load({
     const EN = {
       title: 'Context Razor',
       hint: 'Every model-visible context entry with a ≈token estimate (cl100k_base, same ranks as Skills Market). Delete removes entries from the model view (append-only log keeps traces, irreversible) — no LLM summarization involved.',
-      sessionLabel: 'Session',
-      pickSession: 'Pick a session…',
+      pickSession: 'Open a conversation tab to inspect its context',
       loading: 'Loading…',
       refresh: 'Refresh',
       busyTag: 'running',
@@ -166,6 +164,22 @@ window.__ModuleLoader__.load({
 
     const formatNum = (n) => Number.isFinite(n) ? n.toLocaleString('en-US') : '-'
 
+    // ── 彩虹分级：颜色越暖 = 占用越多 ────────────────────────────────────────
+    // 固定对数档位（相邻约 ×2.5），跨会话语义稳定：绿→黄绿→黄→橙→红→品红。
+    // 档位是「这条消息吃掉多少典型上下文预算」的粗标尺，不随会话内最大值缩放。
+    const RAZOR_TIERS = [
+      { max: 100, hue: 120, label: '≤100' },
+      { max: 300, hue: 90, label: '≤300' },
+      { max: 800, hue: 60, label: '≤800' },
+      { max: 2000, hue: 32, label: '≤2k' },
+      { max: 5000, hue: 8, label: '≤5k' },
+      { max: Infinity, hue: 320, label: '>5k' },
+    ]
+    function tierOf(entry) {
+      const tokens = typeof entry.tokens === 'number' ? entry.tokens : 0
+      return RAZOR_TIERS.findIndex(t => tokens <= t.max)
+    }
+
     async function getJson(url) {
       const r = await fetch(url)
       if (!r.ok) {
@@ -188,18 +202,35 @@ window.__ModuleLoader__.load({
     .rz-select{min-height:30px;padding:4px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-specific-input-major,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font-size:13px;font-family:var(--dsw-font-family);outline:none}
     .rz-stats{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--dsw-alias-label-secondary);font-size:12.5px}
     .rz-badge{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11.5px;white-space:nowrap}
-    .rz-badge.over{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);font-weight:600}
     .rz-chip{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);font-size:11.5px;white-space:nowrap;flex:none}
     .rz-chip.user{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
     .rz-chip.assistant{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
+    .rz-legend{display:inline-flex;gap:4px;align-items:center}
+    .rz-swatch{padding:1px 7px;border-radius:999px;font-size:10.5px;color:var(--dsw-alias-label-primary-inverted,#fff);white-space:nowrap}
+    .rz-swatch.tier-0{background:hsl(120,55%,40%)}
+    .rz-swatch.tier-1{background:hsl(90,60%,38%)}
+    .rz-swatch.tier-2{background:hsl(60,70%,36%)}
+    .rz-swatch.tier-3{background:hsl(32,80%,45%)}
+    .rz-swatch.tier-4{background:hsl(8,75%,48%)}
+    .rz-swatch.tier-5{background:hsl(320,65%,50%)}
     .rz-list{display:flex;flex-direction:column;gap:6px}
     .rz-row{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);cursor:pointer;text-align:left;width:100%}
     .rz-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-    .rz-row.over{border-left-color:var(--dsw-alias-state-error-primary)}
     .rz-row.checked{border-color:var(--dsw-alias-state-business-primary)}
     .rz-row-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}
-    .rz-row.over .rz-row-preview{color:var(--dsw-alias-label-primary)}
     .rz-row-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
+    .rz-badge.tier-0{color:hsl(120,55%,40%);border-color:hsla(120,55%,40%,.45);background:hsla(120,55%,40%,.10)}
+    .rz-badge.tier-1{color:hsl(90,60%,38%);border-color:hsla(90,60%,38%,.45);background:hsla(90,60%,38%,.10)}
+    .rz-badge.tier-2{color:hsl(60,70%,36%);border-color:hsla(60,70%,36%,.45);background:hsla(60,70%,36%,.12)}
+    .rz-badge.tier-3{color:hsl(32,80%,45%);border-color:hsla(32,80%,45%,.5);background:hsla(32,80%,45%,.12)}
+    .rz-badge.tier-4{color:hsl(8,75%,48%);border-color:hsla(8,75%,48%,.5);background:hsla(8,75%,48%,.12);font-weight:600}
+    .rz-badge.tier-5{color:hsl(320,65%,50%);border-color:hsla(320,65%,50%,.5);background:hsla(320,65%,50%,.12);font-weight:600}
+    .rz-row.tier-0{border-left-color:hsl(120,55%,40%)}
+    .rz-row.tier-1{border-left-color:hsl(90,60%,38%)}
+    .rz-row.tier-2{border-left-color:hsl(60,70%,36%)}
+    .rz-row.tier-3{border-left-color:hsl(32,80%,45%)}
+    .rz-row.tier-4{border-left-color:hsl(8,75%,48%)}
+    .rz-row.tier-5{border-left-color:hsl(320,65%,50%)}
     .rz-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;padding:36px 20px;text-align:center;color:var(--dsw-alias-label-secondary)}
     .rz-loading{padding:36px;text-align:center;color:var(--dsw-alias-label-secondary)}
     .rz-footbtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -220,9 +251,9 @@ window.__ModuleLoader__.load({
 
     const Chip = ({ kind, label }) => h('span', { className: 'rz-chip ' + kind }, label)
 
-    const TokenBadge = ({ entry, threshold }) => {
-      const over = overThreshold(entry, threshold)
-      return h('span', { className: 'rz-badge' + (over ? ' over' : ''), title: over ? '≥ 阈值 ' + threshold : undefined },
+    const TokenBadge = ({ entry }) => {
+      const tier = tierOf(entry)
+      return h('span', { className: 'rz-badge tier-' + tier, title: RAZOR_TIERS[tier].label + ' token' },
         '≈' + formatNum(entry.tokens))
     }
 
@@ -238,14 +269,14 @@ window.__ModuleLoader__.load({
     }
 
     /** 单条全文弹窗（正文经 /entry 异步补全）。 */
-    function DetailModal({ detail, threshold, t, onClose }) {
+    function DetailModal({ detail, t, onClose }) {
       if (!detail) return null
       return h('div', { className: 'rz-dlg-backdrop', onClick: onClose },
         h('div', { className: 'rz-dlg', onClick: e => e.stopPropagation() },
           h('h3', null, t('detailTitle') + ' · ' + t('seqLabel', { seq: detail.seq })),
           h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
             h(Chip, { kind: detail.kind, label: t(kindI18n(detail.kind)) }),
-            h(TokenBadge, { entry: detail, threshold }),
+            h(TokenBadge, { entry: detail }),
             h('span', { className: 'rz-label' }, t('detailTokens', { tokens: formatNum(detail.tokens), chars: formatNum(detail.chars) })),
             detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
               input: formatNum(detail.usage.input), output: formatNum(detail.usage.output),
@@ -270,7 +301,6 @@ window.__ModuleLoader__.load({
 
     function RazorPage({ t, fixedSessionId }) {
       useEffect(ensureStyles, [])
-      const [sessions, setSessions] = useState(null)
       const [sessionId, setSessionId] = useState('')
       const [context, setContext] = useState(null)
       const [ctxLoading, setCtxLoading] = useState(false)
@@ -289,10 +319,7 @@ window.__ModuleLoader__.load({
 
       const showToast = (text) => { setToast(text); setTimeout(() => setToast(null), 3000) }
 
-      const loadSessions = () => getJson(API + '/sessions').then(d => setSessions(d.sessions || [])).catch(e => setError(e.message))
-      useEffect(() => { loadSessions() }, [])
-
-      // 会话视图挂载：跟随当前会话（下拉仍可切到别的会话）
+      // 会话视图挂载：只管当前会话（fixedSessionId 来自 slot props）
       useEffect(() => {
         if (fixedSessionId) { sessionRef.current = fixedSessionId; setSessionId(fixedSessionId) }
       }, [fixedSessionId])
@@ -309,11 +336,9 @@ window.__ModuleLoader__.load({
       useEffect(() => { if (sessionId) loadContext(sessionId) }, [sessionId])
 
       const refreshAll = () => {
-        loadSessions()
         if (sessionRef.current) loadContext(sessionRef.current)
       }
 
-      const pickSession = (id) => { sessionRef.current = id; setSessionId(id) }
       const changeThreshold = (v) => {
         const n = Number(v)
         setThreshold(Number.isFinite(n) && n > 0 ? n : 0)
@@ -373,21 +398,18 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'rz-page' },
         h('div', { className: 'rz-hint' }, t('hint')),
         h('div', { className: 'rz-toolbar' },
-          h('span', { className: 'rz-label' }, t('sessionLabel')),
-          h('select', { className: 'rz-select', value: sessionId, onChange: e => pickSession(e.target.value), style: { maxWidth: 380 } },
-            h('option', { value: '' }, t('pickSession')),
-            (sessions || []).map(s => h('option', { key: s.id, value: s.id },
-              (s.cwd ? s.cwd.split('/').pop() + ' · ' : '') + s.id.slice(0, 8) + ' · ' + s.nodes))),
+          context && h('span', { className: 'rz-label' },
+            (context.cwd ? context.cwd.split('/').pop() + ' · ' : '') + String(context.id || '').slice(0, 8)),
           h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh')),
           context && h('span', { className: 'rz-badge' }, context.busy ? t('busyTag') : t('idleTag'))),
         error && h('div', { className: 'rz-hint', style: { color: 'var(--dsw-alias-state-error-primary)' } }, t('operationFailed') + ': ' + error),
-        !sessionId && (sessions === null
-          ? h('div', { className: 'rz-loading' }, t('loading'))
-          : h('div', { className: 'rz-empty' }, t('pickSession'))),
+        !sessionId && h('div', { className: 'rz-empty' }, t('pickSession')),
         sessionId && ctxLoading && h('div', { className: 'rz-loading' }, t('loading')),
         sessionId && !ctxLoading && context && [
           h('div', { key: 'stats', className: 'rz-stats' },
             h('span', null, t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
+            h('span', { className: 'rz-legend', title: t('legendTitle') },
+              RAZOR_TIERS.map((tr, i) => h('span', { key: i, className: 'rz-swatch tier-' + i }, tr.label))),
             h('span', { className: 'rz-spacer' }),
             h('label', { className: 'rz-label', style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
               t('thresholdLabel'),
@@ -412,19 +434,19 @@ window.__ModuleLoader__.load({
             ? h('div', { key: 'empty', className: 'rz-empty' }, overOnly ? t('overOnly') + ' · ' + t('emptyContext') : t('emptyContext'))
             : h('div', { key: 'list', className: 'rz-list' },
                 h(PagedList, { items: visible, t, render: entry => {
-                  const over = overThreshold(entry, threshold)
-                  return h('div', { key: entry.seq, className: 'rz-row' + (over ? ' over' : '') + (selected.has(entry.seq) ? ' checked' : ''),
+                  const tier = tierOf(entry)
+                  return h('div', { key: entry.seq, className: 'rz-row tier-' + tier + (selected.has(entry.seq) ? ' checked' : ''),
                       role: 'button', tabIndex: 0, onClick: () => toggleRow(entry.seq),
                       onKeyDown: e => e.key === 'Enter' && toggleRow(entry.seq) },
                     h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
                     h(Chip, { kind: entry.kind, label: t(kindI18n(entry.kind)) }),
                     h('span', { className: 'rz-row-preview', title: entry.preview }, entry.preview || ' '),
-                    h(TokenBadge, { entry, threshold }),
+                    h(TokenBadge, { entry }),
                     h('button', { className: 'rz-btn', style: { minHeight: 24, padding: '2px 8px' },
                         onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'),
                     h('span', { className: 'rz-row-meta' }, 'seq ' + entry.seq))
                 } })),
-          detail && h(DetailModal, { detail, threshold, t, onClose: () => setDetail(null) }),
+          detail && h(DetailModal, { detail, t, onClose: () => setDetail(null) }),
           confirming && h(ConfirmDialog, { n: selected.size, tokens: formatNum(selectedTokens), deleting, t,
             onCancel: () => setConfirming(false), onOk: doDelete }),
         ],
@@ -438,7 +460,7 @@ window.__ModuleLoader__.load({
     module.exports = {
       name: CLIENT_NAME,
       inject: ['slots', 'locale'],
-      __internals: { NS, ZH, EN, overThreshold, sortEntries },
+      __internals: { NS, ZH, EN, overThreshold, sortEntries, tierOf, RAZOR_TIERS },
       __boot(container, opts = {}) {
         ensureStyles()
         const t = opts.t || ((key, vars) => {
