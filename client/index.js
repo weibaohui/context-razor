@@ -373,7 +373,7 @@ function RazorPage({ t, fixedSessionId }) {
     sessionId && ctxLoading && h('div', { className: 'rz-loading' }, t('loading')),
     sessionId && !ctxLoading && context && [
       h('div', { key: 'bar', className: 'rz-stats' },
-        h('span', null, (context.cwd ? context.cwd.split('/').pop() + ' · ' : '') + t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
+        h('span', null, t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
         h('span', { className: 'rz-legend' + (tierFilter.size > 0 ? ' filtering' : ''), title: t('legendTitle') },
           RAZOR_TIERS.map((tr, i) => h('button', { key: i, className: 'rz-swatch tier-' + i + (tierFilter.has(i) ? ' on' : ''), title: tr.label + ' token', onClick: () => toggleTier(i) }, tr.label))),
         h('span', { className: 'rz-spacer' }),
