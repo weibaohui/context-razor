@@ -11,12 +11,12 @@ window.__ModuleLoader__.load({
     /**
      * dsh-plugin-razor — Browser half.
      *
-     * Settings-section surface (same embedding as skills-management): pick a live
-     * session, see every model-visible context entry with its ≈token estimate,
-     * mark oversized ones in red over a threshold, multi-select and razor them
-     * away. All colors come from the ui-theme `--dsw-*` token layers; all copy
-     * comes from the locale registry (`zh`/`en`). No hardcoded colors, no ad-hoc
-     * copy. No class components — render errors land in globalThis.__rzErrors.
+     * Conversation-view tab surface: the model-visible context entries of the
+     * CURRENT session, each with a rainbow tier (≈token, log-scale buckets —
+     * warmer = heavier) doubling as filter buttons; select and razor away.
+     * All copy comes from the locale registry (`zh`/`en`); tier hues are data
+     * (hsl computed per bucket). No class components — render errors land in
+     * globalThis.__rzErrors.
      */
 
     let __React = null
@@ -58,19 +58,15 @@ window.__ModuleLoader__.load({
 
     const ZH = {
       title: '上下文剃刀',
-      hint: '逐条列出会话上下文（≈token 为 cl100k_base 估算，与技能市场同词表）。删除 = 从模型视野移除（append-only 日志保留痕迹，不可恢复），不经 LLM 总结。',
       pickSession: '在会话顶部标签打开以查看上下文',
       loading: '正在加载…',
       refresh: '刷新',
       busyTag: '运行中',
-      idleTag: '空闲',
-      thresholdLabel: '标红阈值',
-      thresholdUnit: 'token',
       sortLabel: '排序',
       sortOrder: '上下文顺序',
       sortTokens: 'token 高→低',
-      overOnly: '只看超阈值',
-      selectOver: '选中超阈值',
+      selectVisible: '选中可见',
+      selectVisibleHint: '选中当前显示的全部条目（配合色块筛选）',
       clearSelect: '清空选择',
       deleteSelected: '删除选中',
       selectedStats: '已选 {n} 条 / ≈{tokens} token',
@@ -82,7 +78,7 @@ window.__ModuleLoader__.load({
       emptyContext: '该会话上下文为空',
       showMore: '显示更多（剩余 {n}）',
       detailTitle: '条目详情',
-      detailTokens: '≈{tokens} token · {chars} 字符',
+      detailChars: '{chars} 字符',
       detailUsage: '真实用量：输入 {input} / 输出 {output}{cache}',
       detailUsageCache: ' / 缓存读 {cache}',
       close: '关闭',
@@ -98,19 +94,15 @@ window.__ModuleLoader__.load({
 
     const EN = {
       title: 'Context Razor',
-      hint: 'Every model-visible context entry with a ≈token estimate (cl100k_base, same ranks as Skills Market). Delete removes entries from the model view (append-only log keeps traces, irreversible) — no LLM summarization involved.',
       pickSession: 'Open a conversation tab to inspect its context',
       loading: 'Loading…',
       refresh: 'Refresh',
       busyTag: 'running',
-      idleTag: 'idle',
-      thresholdLabel: 'Red threshold',
-      thresholdUnit: 'tokens',
       sortLabel: 'Sort',
       sortOrder: 'Context order',
       sortTokens: 'tokens high→low',
-      overOnly: 'Over threshold only',
-      selectOver: 'Select over threshold',
+      selectVisible: 'Select shown',
+      selectVisibleHint: 'Select every currently shown entry (pairs with tier filters)',
       clearSelect: 'Clear selection',
       deleteSelected: 'Delete selected',
       selectedStats: '{n} selected / ≈{tokens} tokens',
@@ -122,7 +114,7 @@ window.__ModuleLoader__.load({
       emptyContext: 'This session has no context entries',
       showMore: 'Show more ({n} left)',
       detailTitle: 'Entry detail',
-      detailTokens: '≈{tokens} tokens · {chars} chars',
+      detailChars: '{chars} chars',
       detailUsage: 'Actual usage: in {input} / out {output}{cache}',
       detailUsageCache: ' / cache-read {cache}',
       close: 'Close',
@@ -140,15 +132,8 @@ window.__ModuleLoader__.load({
 
     const API = '/context-razor/api'
     const PAGE_SIZE = 150
-    const DEFAULT_THRESHOLD = 500
-    const THRESHOLD_KEY = 'context-razor-threshold'
 
     const kindI18n = (key) => 'kind' + key[0].toUpperCase() + key.slice(1)
-
-    /** 行是否标红（仅 user/assistant/tool 有意义，阈值 <= 0 视为关闭）。 */
-    function overThreshold(entry, threshold) {
-      return threshold > 0 && typeof entry.tokens === 'number' && entry.tokens > threshold
-    }
 
     /** 排序：order = 投影原序；tokens = 降序（并列按 seq，缺 token 沉底）。 */
     function sortEntries(entries, sortBy) {
@@ -168,11 +153,11 @@ window.__ModuleLoader__.load({
     // 固定对数档位（相邻约 ×2.5），跨会话语义稳定：绿→黄绿→黄→橙→红→品红。
     // 档位是「这条消息吃掉多少典型上下文预算」的粗标尺，不随会话内最大值缩放。
     const RAZOR_TIERS = [
-      { max: 100, hue: 120, label: '≤100' },
-      { max: 300, hue: 90, label: '≤300' },
-      { max: 800, hue: 60, label: '≤800' },
-      { max: 2000, hue: 32, label: '≤2k' },
-      { max: 5000, hue: 8, label: '≤5k' },
+      { max: 100, hue: 120, label: '0-100' },
+      { max: 300, hue: 90, label: '100-300' },
+      { max: 800, hue: 60, label: '300-800' },
+      { max: 2000, hue: 32, label: '800-2k' },
+      { max: 5000, hue: 8, label: '2k-5k' },
       { max: Infinity, hue: 320, label: '>5k' },
     ]
     function tierOf(entry) {
@@ -197,8 +182,6 @@ window.__ModuleLoader__.load({
     .rz-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .rz-spacer{flex:1}
     .rz-label{color:var(--dsw-alias-label-secondary);font-size:12.5px;white-space:nowrap}
-    .rz-input{min-height:30px;padding:4px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-specific-input-major,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font-size:13px;font-family:var(--dsw-font-family);outline:none}
-    .rz-input:focus{border-color:var(--dsw-alias-state-business-primary)}
     .rz-select{min-height:30px;padding:4px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-specific-input-major,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font-size:13px;font-family:var(--dsw-font-family);outline:none}
     .rz-stats{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--dsw-alias-label-secondary);font-size:12.5px}
     .rz-badge{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11.5px;white-space:nowrap}
@@ -206,7 +189,9 @@ window.__ModuleLoader__.load({
     .rz-chip.user{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
     .rz-chip.assistant{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
     .rz-legend{display:inline-flex;gap:4px;align-items:center}
-    .rz-swatch{padding:1px 7px;border-radius:999px;font-size:10.5px;color:var(--dsw-alias-label-primary-inverted,#fff);white-space:nowrap}
+    .rz-swatch{border:none;cursor:pointer;padding:2px 8px;border-radius:999px;font-size:10.5px;color:var(--dsw-alias-label-primary-inverted,#fff);white-space:nowrap;font-family:var(--dsw-font-family)}
+    .rz-legend.filtering .rz-swatch:not(.on){opacity:.4}
+    .rz-swatch.on{box-shadow:0 0 0 2px var(--dsw-alias-border-l3,rgba(128,128,128,.65))}
     .rz-swatch.tier-0{background:hsl(120,55%,40%)}
     .rz-swatch.tier-1{background:hsl(90,60%,38%)}
     .rz-swatch.tier-2{background:hsl(60,70%,36%)}
@@ -277,7 +262,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
             h(Chip, { kind: detail.kind, label: t(kindI18n(detail.kind)) }),
             h(TokenBadge, { entry: detail }),
-            h('span', { className: 'rz-label' }, t('detailTokens', { tokens: formatNum(detail.tokens), chars: formatNum(detail.chars) })),
+            h('span', { className: 'rz-label' }, t('detailChars', { chars: formatNum(detail.chars) })),
             detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
               input: formatNum(detail.usage.input), output: formatNum(detail.usage.output),
               cache: detail.usage.cacheRead ? t('detailUsageCache', { cache: formatNum(detail.usage.cacheRead) }) : '' }))),
@@ -305,11 +290,8 @@ window.__ModuleLoader__.load({
       const [context, setContext] = useState(null)
       const [ctxLoading, setCtxLoading] = useState(false)
       const [error, setError] = useState(null)
-      const [threshold, setThreshold] = useState(() => {
-        try { const v = Number(localStorage.getItem(THRESHOLD_KEY)); return Number.isFinite(v) && v > 0 ? v : DEFAULT_THRESHOLD } catch { return DEFAULT_THRESHOLD }
-      })
+      const [tierFilter, setTierFilter] = useState(() => new Set())
       const [sortBy, setSortBy] = useState('order')
-      const [overOnly, setOverOnly] = useState(false)
       const [selected, setSelected] = useState(() => new Set())
       const [detail, setDetail] = useState(null)
       const [confirming, setConfirming] = useState(false)
@@ -339,20 +321,13 @@ window.__ModuleLoader__.load({
         if (sessionRef.current) loadContext(sessionRef.current)
       }
 
-      const changeThreshold = (v) => {
-        const n = Number(v)
-        setThreshold(Number.isFinite(n) && n > 0 ? n : 0)
-        try { localStorage.setItem(THRESHOLD_KEY, String(n)) } catch {}
-      }
-
       const visible = useMemo(() => {
         if (!context) return []
         let rows = context.entries
-        if (overOnly && threshold > 0) rows = rows.filter(e => overThreshold(e, threshold))
+        if (tierFilter.size > 0) rows = rows.filter(e => tierFilter.has(tierOf(e)))
         return sortEntries(rows, sortBy)
-      }, [context, overOnly, threshold, sortBy])
+      }, [context, tierFilter, sortBy])
 
-      const overList = useMemo(() => (context ? context.entries.filter(e => overThreshold(e, threshold)) : []), [context, threshold])
       const selectedTokens = useMemo(() => {
         if (!context) return 0
         const bySeq = new Map(context.entries.map(e => [e.seq, e]))
@@ -367,7 +342,13 @@ window.__ModuleLoader__.load({
         else next.add(seq)
         return next
       })
-      const selectOver = () => setSelected(new Set(overList.map(e => e.seq)))
+      const toggleTier = (i) => setTierFilter(prev => {
+        const next = new Set(prev)
+        if (next.has(i)) next.delete(i)
+        else next.add(i)
+        return next
+      })
+      const selectVisible = () => setSelected(new Set(visible.map(e => e.seq)))
 
       const openDetail = (entry) => {
         setDetail(entry)
@@ -396,42 +377,33 @@ window.__ModuleLoader__.load({
       const canDelete = selected.size > 0 && !busy && !deleting
 
       return h('div', { className: 'rz-page' },
-        h('div', { className: 'rz-hint' }, t('hint')),
-        h('div', { className: 'rz-toolbar' },
-          context && h('span', { className: 'rz-label' },
-            (context.cwd ? context.cwd.split('/').pop() + ' · ' : '') + String(context.id || '').slice(0, 8)),
-          h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh')),
-          context && h('span', { className: 'rz-badge' }, context.busy ? t('busyTag') : t('idleTag'))),
         error && h('div', { className: 'rz-hint', style: { color: 'var(--dsw-alias-state-error-primary)' } }, t('operationFailed') + ': ' + error),
         !sessionId && h('div', { className: 'rz-empty' }, t('pickSession')),
         sessionId && ctxLoading && h('div', { className: 'rz-loading' }, t('loading')),
         sessionId && !ctxLoading && context && [
-          h('div', { key: 'stats', className: 'rz-stats' },
-            h('span', null, t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
-            h('span', { className: 'rz-legend', title: t('legendTitle') },
-              RAZOR_TIERS.map((tr, i) => h('span', { key: i, className: 'rz-swatch tier-' + i }, tr.label))),
+          h('div', { key: 'bar', className: 'rz-stats' },
+            h('span', null, (context.cwd ? context.cwd.split('/').pop() + ' · ' : '') + t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
+            h('span', { className: 'rz-legend' + (tierFilter.size > 0 ? ' filtering' : ''), title: t('legendTitle') },
+              RAZOR_TIERS.map((tr, i) => h('button', { key: i, className: 'rz-swatch tier-' + i + (tierFilter.has(i) ? ' on' : ''), title: tr.label + ' token', onClick: () => toggleTier(i) }, tr.label))),
             h('span', { className: 'rz-spacer' }),
-            h('label', { className: 'rz-label', style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
-              t('thresholdLabel'),
-              h('input', { className: 'rz-input', type: 'number', min: 0, step: 50, value: threshold, onChange: e => changeThreshold(e.target.value), style: { width: 90 } }),
-              t('thresholdUnit')),
+            busy && h('span', { className: 'rz-badge' }, t('busyTag')),
+            h('button', { className: 'rz-btn', onClick: selectVisible, disabled: visible.length === 0 || busy, title: t('selectVisibleHint') },
+              t('selectVisible') + (visible.length ? ` (${visible.length})` : '')),
             h('select', { className: 'rz-select', value: sortBy, onChange: e => setSortBy(e.target.value), title: t('sortLabel'), 'aria-label': t('sortLabel') },
               h('option', { value: 'order' }, t('sortOrder')),
               h('option', { value: 'tokens' }, t('sortTokens'))),
-            h('label', { className: 'rz-label', style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
-              h('input', { type: 'checkbox', checked: overOnly, onChange: e => setOverOnly(e.target.checked) }), t('overOnly'))),
-          h('div', { key: 'sel', className: 'rz-stats' },
-            h('span', null, selected.size > 0 ? t('selectedStats', { n: selected.size, tokens: formatNum(selectedTokens) }) : ' '),
+            h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh'))),
+          selected.size > 0 && h('div', { key: 'sel', className: 'rz-stats' },
+            h('span', null, t('selectedStats', { n: selected.size, tokens: formatNum(selectedTokens) })),
             h('span', { className: 'rz-spacer' }),
             h('div', { className: 'rz-footbtns' },
-              h('button', { className: 'rz-btn', onClick: selectOver, disabled: overList.length === 0 || busy }, t('selectOver') + (overList.length ? ` (${overList.length})` : '')),
-              h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()), disabled: selected.size === 0 }, t('clearSelect')),
+              h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()) }, t('clearSelect')),
               h('button', { className: 'rz-btn rz-btn-danger', disabled: !canDelete,
                 title: busy ? t('deleteBusyHint') : undefined,
                 onClick: () => setConfirming(true) },
-                t('deleteSelected') + (selected.size ? ` (${selected.size})` : '')))),
+                t('deleteSelected') + ` (${selected.size})`))),
           visible.length === 0
-            ? h('div', { key: 'empty', className: 'rz-empty' }, overOnly ? t('overOnly') + ' · ' + t('emptyContext') : t('emptyContext'))
+            ? h('div', { key: 'empty', className: 'rz-empty' }, t('emptyContext'))
             : h('div', { key: 'list', className: 'rz-list' },
                 h(PagedList, { items: visible, t, render: entry => {
                   const tier = tierOf(entry)
@@ -443,8 +415,7 @@ window.__ModuleLoader__.load({
                     h('span', { className: 'rz-row-preview', title: entry.preview }, entry.preview || ' '),
                     h(TokenBadge, { entry }),
                     h('button', { className: 'rz-btn', style: { minHeight: 24, padding: '2px 8px' },
-                        onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'),
-                    h('span', { className: 'rz-row-meta' }, 'seq ' + entry.seq))
+                        onClick: e => { e.stopPropagation(); openDetail(entry) } }, '⋯'))
                 } })),
           detail && h(DetailModal, { detail, t, onClose: () => setDetail(null) }),
           confirming && h(ConfirmDialog, { n: selected.size, tokens: formatNum(selectedTokens), deleting, t,
@@ -460,7 +431,7 @@ window.__ModuleLoader__.load({
     module.exports = {
       name: CLIENT_NAME,
       inject: ['slots', 'locale'],
-      __internals: { NS, ZH, EN, overThreshold, sortEntries, tierOf, RAZOR_TIERS },
+      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS },
       __boot(container, opts = {}) {
         ensureStyles()
         const t = opts.t || ((key, vars) => {

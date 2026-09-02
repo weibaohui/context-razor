@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const plugin = require('../client/index.js')
-const { NS, ZH, EN, overThreshold, sortEntries } = plugin.__internals
+const { NS, ZH, EN, sortEntries } = plugin.__internals
 
 test('client module declares slots + locale injects', () => {
   assert.equal(plugin.name, '@weibaohui/context-razor')
@@ -18,13 +18,6 @@ test('locale dictionaries are zh/en with identical key sets', () => {
   const enKeys = Object.keys(EN).sort()
   assert.deepEqual(zhKeys, enKeys)
   assert.ok(zhKeys.length >= 30)
-})
-
-test('overThreshold marks only entries above a positive threshold', () => {
-  assert.equal(overThreshold({ tokens: 501 }, 500), true)
-  assert.equal(overThreshold({ tokens: 500 }, 500), false)
-  assert.equal(overThreshold({ tokens: 9999 }, 0), false)
-  assert.equal(overThreshold({}, 500), false)
 })
 
 test('sortEntries orders by tokens desc with ties by seq, order mode untouched', () => {
