@@ -64,7 +64,9 @@ window.__ModuleLoader__.load({
       busyTag: '运行中',
       sortLabel: '排序',
       sortOrder: '上下文顺序',
+      sortSeq: '原始序号',
       sortTokens: 'token 高→低',
+      orderNote: '本插件不会改变上下文条目顺序，只会剔除选中条目。',
       selectVisible: '选中可见',
       selectVisibleHint: '选中当前显示的全部条目（配合色块筛选）',
       clearSelect: '清空选择',
@@ -101,7 +103,9 @@ window.__ModuleLoader__.load({
       busyTag: 'running',
       sortLabel: 'Sort',
       sortOrder: 'Context order',
+      sortSeq: 'Original seq',
       sortTokens: 'tokens high→low',
+      orderNote: 'This plugin never reorders context entries; it only removes the selected ones.',
       selectVisible: 'Select shown',
       selectVisibleHint: 'Select every currently shown entry (pairs with tier filters)',
       clearSelect: 'Clear selection',
@@ -137,8 +141,9 @@ window.__ModuleLoader__.load({
 
     const kindI18n = (key) => 'kind' + key[0].toUpperCase() + key.slice(1)
 
-    /** 排序：order = 投影原序；tokens = 降序（并列按 seq，缺 token 沉底）。 */
+    /** 排序：order = 投影原序（模型可见序）；seq = 原始序号升序（裁剪过的会话里与 order 不同：标记消息 seq 大但在中间）；tokens = 降序（并列按 seq，缺 token 沉底）。 */
     function sortEntries(entries, sortBy) {
+      if (sortBy === 'seq') return [...entries].sort((a, b) => a.seq - b.seq)
       if (sortBy !== 'tokens') return entries
       return [...entries].sort((a, b) => {
         const va = a.tokens, vb = b.tokens
@@ -405,6 +410,7 @@ window.__ModuleLoader__.load({
         !sessionId && h('div', { className: 'rz-empty' }, t('pickSession')),
         sessionId && ctxLoading && h('div', { className: 'rz-loading' }, t('loading')),
         sessionId && !ctxLoading && context && [
+          h('div', { key: 'note', className: 'rz-hint' }, t('orderNote')),
           h('div', { key: 'bar', className: 'rz-stats' },
             h('span', null, t('stats', { nodes: context.nodes, tokens: formatNum(context.totalTokens), mode: context.encoder === 'heuristic' ? t('modeHeuristic') : '' })),
             h('span', { className: 'rz-legend' + (tierFilter.size > 0 ? ' filtering' : ''), title: t('legendTitle') },
@@ -415,6 +421,7 @@ window.__ModuleLoader__.load({
               t('selectVisible') + (visible.length ? ` (${visible.length})` : '')),
             h('select', { className: 'rz-select', value: sortBy, onChange: e => setSortBy(e.target.value), title: t('sortLabel'), 'aria-label': t('sortLabel') },
               h('option', { value: 'order' }, t('sortOrder')),
+              h('option', { value: 'seq' }, t('sortSeq')),
               h('option', { value: 'tokens' }, t('sortTokens'))),
             h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh'))),
           selected.size > 0 && h('div', { key: 'sel', className: 'rz-stats' },
