@@ -58,9 +58,9 @@ const ZH = {
   orderNote: '本插件不会改变上下文条目顺序，只会剔除选中条目。',
   legendTitle: '按 token 量级筛选（点选高亮某一档）',
   kindFilterLabel: '类型',
-  selectVisible: '选中可见',
-  selectVisibleHint: '选中当前显示的全部条目（配合色块筛选）',
-  clearSelect: '清空选择',
+  selectVisible: '全选',
+  selectVisibleHint: '全选当前可见条目（配合类型/量级筛选）',
+  clearSelect: '取消全选',
   deleteSelected: '删除选中',
   selectedStats: '已选 {n} 条 / ≈{tokens} token',
   stats: '{nodes} 条 · 合计 ≈{tokens} token{mode}',
@@ -100,9 +100,9 @@ const EN = {
   orderNote: 'This plugin never reorders context entries; it only removes the selected ones.',
   legendTitle: 'Filter by token tier (click to isolate a band)',
   kindFilterLabel: 'Type',
-  selectVisible: 'Select shown',
-  selectVisibleHint: 'Select every currently shown entry (pairs with tier filters)',
-  clearSelect: 'Clear selection',
+  selectVisible: 'All',
+  selectVisibleHint: 'Select all currently visible entries (pairs with type/tier filters)',
+  clearSelect: 'Clear all',
   deleteSelected: 'Delete selected',
   selectedStats: '{n} selected / ≈{tokens} tokens',
   stats: '{nodes} entries · total ≈{tokens} tokens{mode}',
@@ -261,6 +261,11 @@ const STYLE = `<style>
 .rz-kindbtn:hover{border-color:var(--dsw-alias-border-l3);background:var(--dsw-alias-interactive-bg-hover)}
 .rz-kindbtn.on{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);font-weight:600}
 .rz-kindcount{font-size:10px;opacity:.7}
+.rz-thead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
+.rz-thead-l{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rz-sel-stats{color:var(--dsw-alias-label-secondary);font-size:12px;white-space:nowrap}
+.rz-col-tok{flex:0 0 62px;display:flex;justify-content:flex-end}
+.rz-col-pct{flex:0 0 44px;text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;white-space:nowrap}
 .rz-list{display:flex;flex-direction:column;gap:6px}
 .rz-row{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);cursor:pointer;text-align:left;width:100%}
 .rz-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -303,12 +308,10 @@ const STYLE = `<style>
 
 const Chip = ({ kind, label, title }) => h('span', { className: 'rz-chip ' + kind, title }, label)
 
-const TokenBadge = ({ entry, total }) => {
+const TokenBadge = ({ entry }) => {
   const tier = tierOf(entry)
-  const pct = pctOf(entry.tokens, total)
-  const title = RAZOR_TIERS[tier].label + ' token' + (pct ? ' · ' + pct + ' ' + (total ? 'of ≈' + formatNum(total) + ' token' : 'of context') : '')
-  return h('span', { className: 'rz-badge tier-' + tier, title },
-    '≈' + formatNum(entry.tokens) + (pct ? ' · ' + pct : ''))
+  return h('span', { className: 'rz-badge tier-' + tier, title: RAZOR_TIERS[tier].label + ' token' },
+    '≈' + formatNum(entry.tokens))
 }
 
 /** 分页列表：先渲染 pageSize 行，按需增长（大会话一次挂几千行会卡）。 */
@@ -325,12 +328,14 @@ function PagedList({ items, render, t }) {
 /** 单条全文弹窗（正文经 /entry 异步补全）。 */
 function DetailModal({ detail, t, total, onClose }) {
   if (!detail) return null
+  const pct = pctOf(detail.tokens, total)
   return h('div', { className: 'rz-dlg-backdrop', onClick: onClose },
     h('div', { className: 'rz-dlg', onClick: e => e.stopPropagation() },
       h('h3', null, t('detailTitle') + ' · ' + t('seqLabel', { seq: detail.seq })),
       h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
         h(Chip, { ...entryChip(detail, t) }),
-        h(TokenBadge, { entry: detail, total }),
+        h(TokenBadge, { entry: detail }),
+        pct && h('span', { className: 'rz-label', title: pct + ' of ≈' + formatNum(total) + ' token' }, pct),
         h('span', { className: 'rz-label', title: 'seq ' + detail.seq }, formatDateTime(detail.time)),
         h('span', { className: 'rz-label' }, t('detailChars', { chars: formatNum(detail.chars) })),
         detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
@@ -483,13 +488,7 @@ function RazorPage({ t, fixedSessionId }) {
         h('span', { className: 'rz-legend' + (tierFilter.size > 0 ? ' filtering' : ''), title: t('legendTitle') },
           RAZOR_TIERS.map((tr, i) => h('button', { key: i, className: 'rz-swatch tier-' + i + (tierFilter.has(i) ? ' on' : ''), title: tr.label + ' token', onClick: () => toggleTier(i) }, tr.label))),
         h('span', { className: 'rz-spacer' }),
-        busy && h('span', { className: 'rz-badge' }, t('busyTag')),
-        h('button', { className: 'rz-btn', onClick: selectVisible, disabled: visible.length === 0 || busy, title: t('selectVisibleHint') },
-          t('selectVisible') + (visible.length ? ` (${visible.length})` : '')),
-        h('select', { className: 'rz-select', value: sortBy, onChange: e => setSortBy(e.target.value), title: t('sortLabel'), 'aria-label': t('sortLabel') },
-          h('option', { value: 'order' }, t('sortOrder')),
-          h('option', { value: 'tokens' }, t('sortTokens'))),
-        h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh'))),
+        busy && h('span', { className: 'rz-badge' }, t('busyTag'))),
       // 类型筛选：与 chip 同口径的可点选按钮（user/injected/assistant/tool:<名>），
       // 多选 toggle，与 tier 量级筛选正交叠加。按钮带条数；hover 看 token 占比。
       categories.length > 0 && h('div', { key: 'kinds', className: 'rz-kindsbar' },
@@ -503,25 +502,33 @@ function RazorPage({ t, fixedSessionId }) {
               onClick: () => toggleKind(cat) },
               categoryLabel(cat, t),
               h('span', { className: 'rz-kindcount' }, count))))),
-      selected.size > 0 && h('div', { key: 'sel', className: 'rz-stats' },
-        h('span', null, t('selectedStats', { n: selected.size, tokens: formatNum(selectedTokens) })),
-        h('span', { className: 'rz-spacer' }),
-        h('div', { className: 'rz-footbtns' },
-          h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()) }, t('clearSelect')),
-          h('button', { className: 'rz-btn rz-btn-danger', disabled: !canDelete,
+      // 表头（在类型筛选下方）：左 刷新/全选，选中后追加 删除·取消全选；右 排序。
+      h('div', { key: 'thead', className: 'rz-thead' },
+        h('div', { className: 'rz-thead-l' },
+          h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh')),
+          h('button', { className: 'rz-btn', onClick: selectVisible, disabled: visible.length === 0 || busy, title: t('selectVisibleHint') },
+            t('selectVisible') + (visible.length ? ` (${visible.length})` : '')),
+          selected.size > 0 && h('button', { className: 'rz-btn rz-btn-danger', disabled: !canDelete,
             title: busy ? t('deleteBusyHint') : undefined,
             onClick: () => setConfirming([...selected]) },
-            t('deleteSelected') + ` (${selected.size})`))),
+            t('deleteSelected') + ` (${selected.size})`),
+          selected.size > 0 && h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()) }, t('clearSelect'))),
+        h('span', { className: 'rz-spacer' }),
+        h('select', { className: 'rz-select', value: sortBy, onChange: e => setSortBy(e.target.value), title: t('sortLabel'), 'aria-label': t('sortLabel') },
+          h('option', { value: 'order' }, t('sortOrder')),
+          h('option', { value: 'tokens' }, t('sortTokens')))),
       visible.length === 0
         ? h('div', { key: 'empty', className: 'rz-empty' }, t('emptyContext'))
         : h('div', { key: 'list', className: 'rz-list' },
             h(PagedList, { items: visible, t, render: entry => {
               const tier = tierOf(entry)
+              const pct = pctOf(entry.tokens, context.totalTokens)
               return h('div', { key: entry.seq, className: 'rz-row tier-' + tier + (selected.has(entry.seq) ? ' checked' : ''),
                   role: 'button', tabIndex: 0, onClick: () => toggleRow(entry.seq),
                   onKeyDown: e => e.key === 'Enter' && toggleRow(entry.seq) },
                 h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
-                h(TokenBadge, { entry, total: context.totalTokens }),
+                h('span', { className: 'rz-col-tok' }, h(TokenBadge, { entry })),
+                h('span', { className: 'rz-col-pct', title: pct ? pct + ' of ≈' + formatNum(context.totalTokens) + ' token' : '' }, pct || ''),
                 h(Chip, { ...entryChip(entry, t) }),
                 h('span', { className: 'rz-row-preview', title: entry.preview,
                     onClick: e => { e.stopPropagation(); openDetail(entry) } }, entry.preview || ' '),
