@@ -66,6 +66,8 @@ window.__ModuleLoader__.load({
       sortOrder: '上下文顺序',
       sortTokens: 'token 高→低',
       orderNote: '本插件不会改变上下文条目顺序，只会剔除选中条目。',
+      legendTitle: '按 token 量级筛选（点选高亮某一档）',
+      kindFilterLabel: '类型',
       selectVisible: '选中可见',
       selectVisibleHint: '选中当前显示的全部条目（配合色块筛选）',
       clearSelect: '清空选择',
@@ -87,6 +89,8 @@ window.__ModuleLoader__.load({
       deleteTitle: '确认裁剪',
       deleteConfirm: '即将把 {n} 条消息（约 {tokens} token）从模型视野中移除，替换为一条标记消息。日志中保留痕迹，此操作不可恢复。继续？',
       deleteBusyHint: '会话正在运行，等当前回合结束后再裁剪',
+      deleteOne: '删除此条',
+      deleteOneHint: '删除此条（约 {tokens} token）',
       deleteOk: '执行',
       cancel: '取消',
       deletedToast: '已删除 {n} 条（约 {tokens} token）',
@@ -104,6 +108,8 @@ window.__ModuleLoader__.load({
       sortOrder: 'Context order',
       sortTokens: 'tokens high→low',
       orderNote: 'This plugin never reorders context entries; it only removes the selected ones.',
+      legendTitle: 'Filter by token tier (click to isolate a band)',
+      kindFilterLabel: 'Type',
       selectVisible: 'Select shown',
       selectVisibleHint: 'Select every currently shown entry (pairs with tier filters)',
       clearSelect: 'Clear selection',
@@ -125,6 +131,8 @@ window.__ModuleLoader__.load({
       deleteTitle: 'Confirm trim',
       deleteConfirm: 'About to remove {n} messages (≈{tokens} tokens) from the model view, replaced by one marker message. Traces stay in the log; this cannot be undone. Continue?',
       deleteBusyHint: 'Session is running — trim after the current turn finishes',
+      deleteOne: 'Delete this entry',
+      deleteOneHint: 'Delete this entry (≈{tokens} tokens)',
       deleteOk: 'Delete',
       cancel: 'Cancel',
       deletedToast: 'Deleted {n} entries (≈{tokens} tokens)',
@@ -172,6 +180,38 @@ window.__ModuleLoader__.load({
         return { kind: 'user', label: t('kindInjected'), title: [entry.sourceKind, entry.sourceForm, entry.sourcePlugin].filter(Boolean).join(' · ') }
       }
       return { kind: entry.kind, label: t(kindI18n(entry.kind)) }
+    }
+
+    /**
+     * 筛选用稳定分类键，与 entryChip 的可见口径一致：
+     *   tool  → 'tool:<工具名>'（无工具名则 'tool:'，按钮文案退回「工具」）
+     *   user 注入 → 'injected'（sourceKind !== 'user' 的 user 消息，统一一档；
+     *     细分来源在 chip 的 title 与详情里已可见，筛选层不再切分，避免按钮爆炸）
+     *   user / assistant → 自身
+     * 「按钮文案」与 chip 同源（categoryLabel），用户在两处看到的是同一个词。
+     */
+    function entryCategory(entry) {
+      if (entry.kind === 'tool') return 'tool:' + (typeof entry.tool === 'string' ? entry.tool : '')
+      if (entry.kind === 'user' && entry.sourceKind && entry.sourceKind !== 'user') return 'injected'
+      return entry.kind
+    }
+    function categoryLabel(cat, t) {
+      if (cat === 'user') return t('kindUser')
+      if (cat === 'assistant') return t('kindAssistant')
+      if (cat === 'injected') return t('kindInjected')
+      if (cat.lastIndexOf('tool:', 0) === 0) {
+        const name = cat.slice(5)
+        return name || t('kindTool')
+      }
+      return cat
+    }
+
+    /** 该条 token 占全部上下文的百分比文案；total 非正或 part 为 0 返回 null（不显示）。 */
+    function pctOf(part, total) {
+      if (!total || !part) return null
+      const p = part / total * 100
+      if (p < 0.1) return '<0.1%'
+      return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '%'
     }
 
     // ── 彩虹分级：颜色越暖 = 占用越多 ────────────────────────────────────────
@@ -224,6 +264,13 @@ window.__ModuleLoader__.load({
     .rz-swatch.tier-3{background:hsl(32,80%,45%)}
     .rz-swatch.tier-4{background:hsl(8,75%,48%)}
     .rz-swatch.tier-5{background:hsl(320,65%,50%)}
+    .rz-kindsbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .rz-kinds{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
+    .rz-kinds.filtering .rz-kindbtn:not(.on){opacity:.45}
+    .rz-kindbtn{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11.5px;cursor:pointer;font-family:var(--dsw-font-family);white-space:nowrap}
+    .rz-kindbtn:hover{border-color:var(--dsw-alias-border-l3);background:var(--dsw-alias-interactive-bg-hover)}
+    .rz-kindbtn.on{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);font-weight:600}
+    .rz-kindcount{font-size:10px;opacity:.7}
     .rz-list{display:flex;flex-direction:column;gap:6px}
     .rz-row{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);cursor:pointer;text-align:left;width:100%}
     .rz-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -231,6 +278,9 @@ window.__ModuleLoader__.load({
     .rz-row-preview{flex:0 1 340px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px;text-decoration:none}
     .rz-row-preview:hover{text-decoration:underline;text-underline-offset:3px}
     .rz-row-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
+    .rz-row-del{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:4px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1;cursor:pointer;flex:none}
+    .rz-row-del:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);background:hsla(0,75%,50%,.08)}
+    .rz-row-del:disabled{opacity:.35;cursor:not-allowed}
     .rz-badge.tier-0{color:hsl(120,55%,40%);border-color:hsla(120,55%,40%,.45);background:hsla(120,55%,40%,.10)}
     .rz-badge.tier-1{color:hsl(90,60%,38%);border-color:hsla(90,60%,38%,.45);background:hsla(90,60%,38%,.10)}
     .rz-badge.tier-2{color:hsl(60,70%,36%);border-color:hsla(60,70%,36%,.45);background:hsla(60,70%,36%,.12)}
@@ -263,10 +313,12 @@ window.__ModuleLoader__.load({
 
     const Chip = ({ kind, label, title }) => h('span', { className: 'rz-chip ' + kind, title }, label)
 
-    const TokenBadge = ({ entry }) => {
+    const TokenBadge = ({ entry, total }) => {
       const tier = tierOf(entry)
-      return h('span', { className: 'rz-badge tier-' + tier, title: RAZOR_TIERS[tier].label + ' token' },
-        '≈' + formatNum(entry.tokens))
+      const pct = pctOf(entry.tokens, total)
+      const title = RAZOR_TIERS[tier].label + ' token' + (pct ? ' · ' + pct + ' ' + (total ? 'of ≈' + formatNum(total) + ' token' : 'of context') : '')
+      return h('span', { className: 'rz-badge tier-' + tier, title },
+        '≈' + formatNum(entry.tokens) + (pct ? ' · ' + pct : ''))
     }
 
     /** 分页列表：先渲染 pageSize 行，按需增长（大会话一次挂几千行会卡）。 */
@@ -281,14 +333,14 @@ window.__ModuleLoader__.load({
     }
 
     /** 单条全文弹窗（正文经 /entry 异步补全）。 */
-    function DetailModal({ detail, t, onClose }) {
+    function DetailModal({ detail, t, total, onClose }) {
       if (!detail) return null
       return h('div', { className: 'rz-dlg-backdrop', onClick: onClose },
         h('div', { className: 'rz-dlg', onClick: e => e.stopPropagation() },
           h('h3', null, t('detailTitle') + ' · ' + t('seqLabel', { seq: detail.seq })),
           h('div', { className: 'rz-stats', style: { marginBottom: 10 } },
             h(Chip, { ...entryChip(detail, t) }),
-            h(TokenBadge, { entry: detail }),
+            h(TokenBadge, { entry: detail, total }),
             h('span', { className: 'rz-label', title: 'seq ' + detail.seq }, formatDateTime(detail.time)),
             h('span', { className: 'rz-label' }, t('detailChars', { chars: formatNum(detail.chars) })),
             detail.usage && h('span', { className: 'rz-label' }, t('detailUsage', {
@@ -319,10 +371,11 @@ window.__ModuleLoader__.load({
       const [ctxLoading, setCtxLoading] = useState(false)
       const [error, setError] = useState(null)
       const [tierFilter, setTierFilter] = useState(() => new Set())
+      const [kindFilter, setKindFilter] = useState(() => new Set())
       const [sortBy, setSortBy] = useState('order')
       const [selected, setSelected] = useState(() => new Set())
       const [detail, setDetail] = useState(null)
-      const [confirming, setConfirming] = useState(false)
+      const [confirming, setConfirming] = useState(null) // null | number[] 待裁剪 seqs（单条/多选同源）
       const [deleting, setDeleting] = useState(false)
       const [toast, setToast] = useState(null)
       const sessionRef = useRef('')
@@ -353,16 +406,34 @@ window.__ModuleLoader__.load({
         if (!context) return []
         let rows = context.entries
         if (tierFilter.size > 0) rows = rows.filter(e => tierFilter.has(tierOf(e)))
+        if (kindFilter.size > 0) rows = rows.filter(e => kindFilter.has(entryCategory(e)))
         return sortEntries(rows, sortBy)
-      }, [context, tierFilter, sortBy])
+      }, [context, tierFilter, kindFilter, sortBy])
 
-      const selectedTokens = useMemo(() => {
-        if (!context) return 0
-        const bySeq = new Map(context.entries.map(e => [e.seq, e]))
+      // 当前上下文里实际出现的分类（cat/count/tokens），按条数降序——决定渲染哪些按钮。
+      const categories = useMemo(() => {
+        if (!context) return []
+        const seen = new Map()
+        for (const e of context.entries) {
+          const c = entryCategory(e)
+          const prev = seen.get(c) || { count: 0, tokens: 0 }
+          prev.count += 1
+          prev.tokens += (e.tokens || 0)
+          seen.set(c, prev)
+        }
+        return [...seen.entries()]
+          .map(([cat, v]) => ({ cat, count: v.count, tokens: v.tokens }))
+          .sort((a, b) => b.count - a.count || b.tokens - a.tokens)
+      }, [context])
+
+      const entriesBySeq = useMemo(() => context ? new Map(context.entries.map(e => [e.seq, e])) : null, [context])
+      const sumSeqs = (seqs) => {
         let sum = 0
-        for (const seq of selected) { const e = bySeq.get(seq); if (e) sum += e.tokens }
+        if (entriesBySeq) for (const seq of seqs) { const e = entriesBySeq.get(seq); if (e) sum += e.tokens || 0 }
         return sum
-      }, [context, selected])
+      }
+      const selectedTokens = useMemo(() => sumSeqs(selected), [selected, entriesBySeq])
+      const confirmTokens = useMemo(() => confirming ? sumSeqs(confirming) : 0, [confirming, entriesBySeq])
 
       const toggleRow = (seq) => setSelected(prev => {
         const next = new Set(prev)
@@ -376,6 +447,12 @@ window.__ModuleLoader__.load({
         else next.add(i)
         return next
       })
+      const toggleKind = (cat) => setKindFilter(prev => {
+        const next = new Set(prev)
+        if (next.has(cat)) next.delete(cat)
+        else next.add(cat)
+        return next
+      })
       const selectVisible = () => setSelected(new Set(visible.map(e => e.seq)))
 
       const openDetail = (entry) => {
@@ -386,17 +463,18 @@ window.__ModuleLoader__.load({
       }
 
       const doDelete = async () => {
+        if (!confirming || confirming.length === 0) return
         setDeleting(true)
         try {
-          const r = await fetch(API + '/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionId, seqs: [...selected] }) })
+          const r = await fetch(API + '/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionId, seqs: confirming }) })
           const d = await r.json().catch(() => ({}))
           if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status)
-          setConfirming(false)
+          setConfirming(null)
           setSelected(new Set())
           showToast(t('deletedToast', { n: d.removed, tokens: formatNum(d.tokensRemoved) }))
           refreshAll()
         } catch (e) {
-          setConfirming(false)
+          setConfirming(null)
           setError(e.message)
         } finally { setDeleting(false) }
       }
@@ -422,6 +500,19 @@ window.__ModuleLoader__.load({
               h('option', { value: 'order' }, t('sortOrder')),
               h('option', { value: 'tokens' }, t('sortTokens'))),
             h('button', { className: 'rz-btn', onClick: refreshAll, title: t('refresh') }, t('refresh'))),
+          // 类型筛选：与 chip 同口径的可点选按钮（user/injected/assistant/tool:<名>），
+          // 多选 toggle，与 tier 量级筛选正交叠加。按钮带条数；hover 看 token 占比。
+          categories.length > 0 && h('div', { key: 'kinds', className: 'rz-kindsbar' },
+            h('span', { className: 'rz-label' }, t('kindFilterLabel')),
+            h('span', { className: 'rz-kinds' + (kindFilter.size > 0 ? ' filtering' : '') },
+              categories.map(({ cat, count, tokens }) =>
+                h('button', { key: cat,
+                  className: 'rz-kindbtn' + (kindFilter.has(cat) ? ' on' : ''),
+                  title: categoryLabel(cat, t) + ' · ' + count + ' 条 · ≈' + formatNum(tokens) + ' token'
+                    + (context.totalTokens ? '（' + (pctOf(tokens, context.totalTokens) || '0%') + '）' : ''),
+                  onClick: () => toggleKind(cat) },
+                  categoryLabel(cat, t),
+                  h('span', { className: 'rz-kindcount' }, count))))),
           selected.size > 0 && h('div', { key: 'sel', className: 'rz-stats' },
             h('span', null, t('selectedStats', { n: selected.size, tokens: formatNum(selectedTokens) })),
             h('span', { className: 'rz-spacer' }),
@@ -429,7 +520,7 @@ window.__ModuleLoader__.load({
               h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()) }, t('clearSelect')),
               h('button', { className: 'rz-btn rz-btn-danger', disabled: !canDelete,
                 title: busy ? t('deleteBusyHint') : undefined,
-                onClick: () => setConfirming(true) },
+                onClick: () => setConfirming([...selected]) },
                 t('deleteSelected') + ` (${selected.size})`))),
           visible.length === 0
             ? h('div', { key: 'empty', className: 'rz-empty' }, t('emptyContext'))
@@ -440,15 +531,19 @@ window.__ModuleLoader__.load({
                       role: 'button', tabIndex: 0, onClick: () => toggleRow(entry.seq),
                       onKeyDown: e => e.key === 'Enter' && toggleRow(entry.seq) },
                     h('input', { type: 'checkbox', checked: selected.has(entry.seq), onClick: e => e.stopPropagation(), onChange: () => toggleRow(entry.seq) }),
-                    h(TokenBadge, { entry }),
+                    h(TokenBadge, { entry, total: context.totalTokens }),
                     h(Chip, { ...entryChip(entry, t) }),
                     h('span', { className: 'rz-row-preview', title: entry.preview,
                         onClick: e => { e.stopPropagation(); openDetail(entry) } }, entry.preview || ' '),
-                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)))
+                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)),
+                    h('button', { className: 'rz-row-del', type: 'button', disabled: busy,
+                        title: busy ? t('deleteBusyHint') : t('deleteOneHint', { tokens: formatNum(entry.tokens) }),
+                        'aria-label': t('deleteOne'),
+                        onClick: e => { e.stopPropagation(); if (!busy) setConfirming([entry.seq]) } }, '✕'))
                 } })),
-          detail && h(DetailModal, { detail, t, onClose: () => setDetail(null) }),
-          confirming && h(ConfirmDialog, { n: selected.size, tokens: formatNum(selectedTokens), deleting, t,
-            onCancel: () => setConfirming(false), onOk: doDelete }),
+          detail && h(DetailModal, { detail, t, total: context.totalTokens, onClose: () => setDetail(null) }),
+          confirming && confirming.length > 0 && h(ConfirmDialog, { n: confirming.length, tokens: formatNum(confirmTokens), deleting, t,
+            onCancel: () => setConfirming(null), onOk: doDelete }),
         ],
         toast && h('div', { className: 'rz-toast' }, toast))
     }
@@ -460,7 +555,7 @@ window.__ModuleLoader__.load({
     module.exports = {
       name: CLIENT_NAME,
       inject: ['slots', 'locale'],
-      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS, formatDateTime, entryChip },
+      __internals: { NS, ZH, EN, sortEntries, tierOf, RAZOR_TIERS, formatDateTime, entryChip, entryCategory, categoryLabel, pctOf },
       __boot(container, opts = {}) {
         ensureStyles()
         const t = opts.t || ((key, vars) => {
