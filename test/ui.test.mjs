@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const plugin = require('../client/index.js')
-const { NS, ZH, EN, sortEntries } = plugin.__internals
+const { NS, ZH, EN, sortEntries, entryCategory, categoryLabel, pctOf } = plugin.__internals
 
 test('client module declares slots + locale injects', () => {
   assert.equal(plugin.name, '@weibaohui/context-razor')
@@ -63,4 +63,34 @@ test('entryChip: tool shows the tool name, injected user messages are marked', (
   assert.equal(injected.label, 'injected')
   assert.equal(injected.title, 'plugin · notice · @weibaohui/x')
   assert.equal(entryChip({ kind: 'user', sourceKind: 'user' }, t).label, 'User')
+})
+
+test('entryCategory keys match the chip taxonomy (user/injected/assistant/tool:<name>)', () => {
+  assert.equal(entryCategory({ kind: 'user', sourceKind: 'user' }), 'user')
+  assert.equal(entryCategory({ kind: 'user' }), 'user')
+  assert.equal(entryCategory({ kind: 'user', sourceKind: 'plugin', sourcePlugin: 'x' }), 'injected')
+  assert.equal(entryCategory({ kind: 'user', sourceKind: 'skill-catalog' }), 'injected')
+  assert.equal(entryCategory({ kind: 'assistant' }), 'assistant')
+  assert.equal(entryCategory({ kind: 'tool', tool: 'bash' }), 'tool:bash')
+  assert.equal(entryCategory({ kind: 'tool', tool: 'Read' }), 'tool:Read')
+  assert.equal(entryCategory({ kind: 'tool' }), 'tool:')
+})
+
+test('categoryLabel reuses chip i18n and falls back to the tool name', () => {
+  const t = (key) => EN[key] ?? key
+  assert.equal(categoryLabel('user', t), 'User')
+  assert.equal(categoryLabel('assistant', t), 'Assistant')
+  assert.equal(categoryLabel('injected', t), 'injected')
+  assert.equal(categoryLabel('tool:bash', t), 'bash')
+  assert.equal(categoryLabel('tool:', t), 'Tool')
+})
+
+test('pctOf formats share-of-context and tolerates empty totals', () => {
+  assert.equal(pctOf(100, 1000), '10%')        // 恰 10% → 整数
+  assert.equal(pctOf(15, 1000), '1.5%')         // <10% → 1 位小数
+  assert.equal(pctOf(2, 1000), '0.2%')           // 刚过 0.1% 阈值
+  assert.equal(pctOf(1, 10000), '<0.1%')        // 极小 → <0.1%
+  assert.equal(pctOf(0, 1000), null)
+  assert.equal(pctOf(100, 0), null)
+  assert.equal(pctOf(100, null), null)
 })
