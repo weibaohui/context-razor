@@ -89,6 +89,8 @@ window.__ModuleLoader__.load({
       deleteTitle: '确认裁剪',
       deleteConfirm: '即将把 {n} 条消息（约 {tokens} token）从模型视野中移除，替换为一条标记消息。日志中保留痕迹，此操作不可恢复。继续？',
       deleteBusyHint: '会话正在运行，等当前回合结束后再裁剪',
+      deleteOne: '删除此条',
+      deleteOneHint: '删除此条（约 {tokens} token）',
       deleteOk: '执行',
       cancel: '取消',
       deletedToast: '已删除 {n} 条（约 {tokens} token）',
@@ -129,6 +131,8 @@ window.__ModuleLoader__.load({
       deleteTitle: 'Confirm trim',
       deleteConfirm: 'About to remove {n} messages (≈{tokens} tokens) from the model view, replaced by one marker message. Traces stay in the log; this cannot be undone. Continue?',
       deleteBusyHint: 'Session is running — trim after the current turn finishes',
+      deleteOne: 'Delete this entry',
+      deleteOneHint: 'Delete this entry (≈{tokens} tokens)',
       deleteOk: 'Delete',
       cancel: 'Cancel',
       deletedToast: 'Deleted {n} entries (≈{tokens} tokens)',
@@ -274,6 +278,9 @@ window.__ModuleLoader__.load({
     .rz-row-preview{flex:0 1 340px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px;text-decoration:none}
     .rz-row-preview:hover{text-decoration:underline;text-underline-offset:3px}
     .rz-row-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
+    .rz-row-del{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:4px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1;cursor:pointer;flex:none}
+    .rz-row-del:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);background:hsla(0,75%,50%,.08)}
+    .rz-row-del:disabled{opacity:.35;cursor:not-allowed}
     .rz-badge.tier-0{color:hsl(120,55%,40%);border-color:hsla(120,55%,40%,.45);background:hsla(120,55%,40%,.10)}
     .rz-badge.tier-1{color:hsl(90,60%,38%);border-color:hsla(90,60%,38%,.45);background:hsla(90,60%,38%,.10)}
     .rz-badge.tier-2{color:hsl(60,70%,36%);border-color:hsla(60,70%,36%,.45);background:hsla(60,70%,36%,.12)}
@@ -368,7 +375,7 @@ window.__ModuleLoader__.load({
       const [sortBy, setSortBy] = useState('order')
       const [selected, setSelected] = useState(() => new Set())
       const [detail, setDetail] = useState(null)
-      const [confirming, setConfirming] = useState(false)
+      const [confirming, setConfirming] = useState(null) // null | number[] 待裁剪 seqs（单条/多选同源）
       const [deleting, setDeleting] = useState(false)
       const [toast, setToast] = useState(null)
       const sessionRef = useRef('')
@@ -419,13 +426,14 @@ window.__ModuleLoader__.load({
           .sort((a, b) => b.count - a.count || b.tokens - a.tokens)
       }, [context])
 
-      const selectedTokens = useMemo(() => {
-        if (!context) return 0
-        const bySeq = new Map(context.entries.map(e => [e.seq, e]))
+      const entriesBySeq = useMemo(() => context ? new Map(context.entries.map(e => [e.seq, e])) : null, [context])
+      const sumSeqs = (seqs) => {
         let sum = 0
-        for (const seq of selected) { const e = bySeq.get(seq); if (e) sum += e.tokens }
+        if (entriesBySeq) for (const seq of seqs) { const e = entriesBySeq.get(seq); if (e) sum += e.tokens || 0 }
         return sum
-      }, [context, selected])
+      }
+      const selectedTokens = useMemo(() => sumSeqs(selected), [selected, entriesBySeq])
+      const confirmTokens = useMemo(() => confirming ? sumSeqs(confirming) : 0, [confirming, entriesBySeq])
 
       const toggleRow = (seq) => setSelected(prev => {
         const next = new Set(prev)
@@ -455,17 +463,18 @@ window.__ModuleLoader__.load({
       }
 
       const doDelete = async () => {
+        if (!confirming || confirming.length === 0) return
         setDeleting(true)
         try {
-          const r = await fetch(API + '/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionId, seqs: [...selected] }) })
+          const r = await fetch(API + '/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionId, seqs: confirming }) })
           const d = await r.json().catch(() => ({}))
           if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status)
-          setConfirming(false)
+          setConfirming(null)
           setSelected(new Set())
           showToast(t('deletedToast', { n: d.removed, tokens: formatNum(d.tokensRemoved) }))
           refreshAll()
         } catch (e) {
-          setConfirming(false)
+          setConfirming(null)
           setError(e.message)
         } finally { setDeleting(false) }
       }
@@ -511,7 +520,7 @@ window.__ModuleLoader__.load({
               h('button', { className: 'rz-btn', onClick: () => setSelected(new Set()) }, t('clearSelect')),
               h('button', { className: 'rz-btn rz-btn-danger', disabled: !canDelete,
                 title: busy ? t('deleteBusyHint') : undefined,
-                onClick: () => setConfirming(true) },
+                onClick: () => setConfirming([...selected]) },
                 t('deleteSelected') + ` (${selected.size})`))),
           visible.length === 0
             ? h('div', { key: 'empty', className: 'rz-empty' }, t('emptyContext'))
@@ -526,11 +535,15 @@ window.__ModuleLoader__.load({
                     h(Chip, { ...entryChip(entry, t) }),
                     h('span', { className: 'rz-row-preview', title: entry.preview,
                         onClick: e => { e.stopPropagation(); openDetail(entry) } }, entry.preview || ' '),
-                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)))
+                    h('span', { className: 'rz-row-meta', title: 'seq ' + entry.seq }, formatDateTime(entry.time)),
+                    h('button', { className: 'rz-row-del', type: 'button', disabled: busy,
+                        title: busy ? t('deleteBusyHint') : t('deleteOneHint', { tokens: formatNum(entry.tokens) }),
+                        'aria-label': t('deleteOne'),
+                        onClick: e => { e.stopPropagation(); if (!busy) setConfirming([entry.seq]) } }, '✕'))
                 } })),
           detail && h(DetailModal, { detail, t, total: context.totalTokens, onClose: () => setDetail(null) }),
-          confirming && h(ConfirmDialog, { n: selected.size, tokens: formatNum(selectedTokens), deleting, t,
-            onCancel: () => setConfirming(false), onOk: doDelete }),
+          confirming && confirming.length > 0 && h(ConfirmDialog, { n: confirming.length, tokens: formatNum(confirmTokens), deleting, t,
+            onCancel: () => setConfirming(null), onOk: doDelete }),
         ],
         toast && h('div', { className: 'rz-toast' }, toast))
     }
