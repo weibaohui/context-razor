@@ -75,11 +75,21 @@ function entryKindOf(type) {
   return type
 }
 
+/**
+ * 会话全部事件的兼容读取：宿主 0.1.5 起 Session 移除了 `events` 属性
+ * （`snapshotEvents()` / `eventAt()` 取代），旧宿主仍是数组属性——两个
+ * 形状都接住，快照在下次 append 前有缓存，逐遍扫描的开销可接受。
+ */
+function eventsOf(session) {
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
+  return Array.isArray(session.events) ? session.events : []
+}
+
 /** 会话是否有未收口的 turn（闲时才允许 surface replace，避免与运行中的 agent 竞态）。 */
 function sessionBusy(session) {
   let lastStart = -1
   let lastEnd = -1
-  for (const event of session.events) {
+  for (const event of eventsOf(session)) {
     if (event.type === 'turn/start') lastStart = event.seq
     else if (event.type === 'turn/end') lastEnd = event.seq
   }
@@ -93,9 +103,10 @@ function sessionBusy(session) {
  * 此刻真实可见的上下文。
  */
 function projectContext(session) {
-  const bySeq = new Map(session.events.map((event) => [event.seq, event]))
+  const allEvents = eventsOf(session)
+  const bySeq = new Map(allEvents.map((event) => [event.seq, event]))
   const toolNames = new Map()
-  for (const event of session.events) {
+  for (const event of allEvents) {
     if (event.type === 'tool/call' && event.data && typeof event.data.callId === 'string') {
       toolNames.set(event.data.callId, typeof event.data.name === 'string' ? event.data.name : undefined)
     }
@@ -156,7 +167,7 @@ function deleteEntries(session, wantedSeqs) {
   if (sessionBusy(session)) throw new Error('session is busy: wait for the running turn to finish')
   const nodes = [...session.surface.nodes]
   const runs = groupRuns(nodes, wantedSeqs)
-  const bySeq = new Map(session.events.map((event) => [event.seq, event]))
+  const bySeq = new Map(eventsOf(session).map((event) => [event.seq, event]))
   const done = []
   let removed = 0
   let tokensRemoved = 0
@@ -244,14 +255,17 @@ module.exports = {
           // GET /context-razor/api/sessions → 会话清单（轻量，不算 token）
           if (req.method === 'GET' && apiPath.endsWith('/context-razor/api/sessions')) {
             const sessions = (ctx.sessions.list() || [])
-              .map((session) => ({
-                id: session.id,
-                cwd: session.header && session.header.cwd,
-                createdAt: session.header && session.header.createdAt,
-                lastTime: session.events.length > 0 ? session.events[session.events.length - 1].time : undefined,
-                nodes: session.surface.nodes.length,
-                busy: sessionBusy(session),
-              }))
+              .map((session) => {
+                const evs = eventsOf(session)
+                return {
+                  id: session.id,
+                  cwd: session.header && session.header.cwd,
+                  createdAt: session.header && session.header.createdAt,
+                  lastTime: evs.length > 0 ? evs[evs.length - 1].time : undefined,
+                  nodes: session.surface.nodes.length,
+                  busy: sessionBusy(session),
+                }
+              })
               .sort((a, b) => String(b.lastTime || '').localeCompare(String(a.lastTime || '')))
             sendJson(200, { sessions })
             return
@@ -279,11 +293,11 @@ module.exports = {
             const session = ctx.sessions.get(query.get('session') || '')
             if (session === undefined) { fail(404, 'session not found'); return }
             const seq = Number(query.get('seq'))
-            const event = session.events.find((candidate) => candidate.seq === seq)
+            const event = eventsOf(session).find((candidate) => candidate.seq === seq)
             if (event === undefined) { fail(404, 'entry not found'); return }
             const text = entryText(event)
             const toolName = event.type === 'tool/result' && event.data.message
-              ? session.events.find((candidate) => candidate.type === 'tool/call' && candidate.data.callId === event.data.message.source.callId)
+              ? eventsOf(session).find((candidate) => candidate.type === 'tool/call' && candidate.data.callId === event.data.message.source.callId)
               : undefined
             const source = event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined
             sendJson(200, {

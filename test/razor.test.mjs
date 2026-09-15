@@ -63,14 +63,14 @@ const toolResult = (callId, text) => ({
   source: { kind: 'tool', callId },
 })
 
-/** 内存版 Session：append 复刻 surface fold 的最小语义（replace 影子化 + 追加）。 */
-function fakeSession({ id = 's-1', cwd = '/tmp/demo', events = [], nodes = null } = {}) {
+/** 内存版 Session：append 复刻 surface fold 的最小语义（replace 影子化 + 追加）。
+ *  hostShape: 'events'（旧宿主，events 数组属性）| 'snapshot'（0.1.5+，snapshotEvents() 且无 events 属性）。 */
+function fakeSession({ id = 's-1', cwd = '/tmp/demo', events = [], nodes = null, hostShape = 'events' } = {}) {
   const log = events.map((e, i) => ({ seq: i, time: '2026-09-02T00:00:0' + (i % 10) + 'Z', ...e }))
   const surface = { nodes: nodes ?? log.filter((e) => ['user/message', 'assistant/message', 'tool/result'].includes(e.type)).map((e) => e.seq) }
-  return {
+  const session = {
     id,
     header: { id, createdAt: 1700000000000, cwd },
-    events: log,
     surface,
     append(type, data, opts = {}) {
       const seq = log.length
@@ -91,6 +91,9 @@ function fakeSession({ id = 's-1', cwd = '/tmp/demo', events = [], nodes = null 
       return { seq }
     },
   }
+  if (hostShape === 'snapshot') session.snapshotEvents = () => log
+  else session.events = log
+  return session
 }
 
 function setupPlugin({ sessions } = {}) {
@@ -235,4 +238,23 @@ test('deleteEntries through the exported helper matches the route behavior', () 
   const result = deleteEntries(s, [1])
   assert.equal(result.removed, 1)
   assert.deepEqual(s.surface.nodes, [6, 2, 3])
+})
+
+test('host 0.1.5 shape (snapshotEvents, no events property) drives the full flow', async () => {
+  const s = fakeSession({ id: 's-new', events: demoEvents(), hostShape: 'snapshot' })
+  assert.equal(s.events, undefined) // 新宿主已移除该属性，插件不得依赖
+  const { call } = setupPlugin({ sessions: new Map([[s.id, s]]) })
+  const listed = await call('GET', '/context-razor/api/sessions')
+  assert.equal(listed.payload.sessions[0].nodes, 3)
+  assert.equal(listed.payload.sessions[0].busy, false)
+  const projected = await call('GET', '/context-razor/api/context?session=s-new')
+  assert.equal(projected.status, 200)
+  assert.equal(projected.payload.entries.length, 3)
+  const deleted = await call('POST', '/context-razor/api/delete', { session: 's-new', seqs: [1, 2] })
+  assert.equal(deleted.status, 200)
+  assert.equal(deleted.payload.removed, 2)
+  const after = await call('GET', '/context-razor/api/context?session=s-new')
+  assert.equal(after.payload.entries.length, 2) // 剩 tool/result + 替换 marker
+  const marker = after.payload.entries.find((e) => e.sourcePlugin === '@weibaohui/context-razor')
+  assert.ok(marker, 'replacement marker visible on the surface')
 })
