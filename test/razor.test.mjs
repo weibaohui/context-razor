@@ -104,6 +104,7 @@ function setupPlugin({ sessions } = {}) {
       list: () => [...sessions.values()],
     },
     webServer: { register: (route) => { handler = route.handler } },
+    connection: { requestRejection: () => undefined },
     effect: (fn) => fn(),
     logger: { warn: () => {} },
   }
