@@ -96,7 +96,7 @@ function fakeSession({ id = 's-1', cwd = '/tmp/demo', events = [], nodes = null,
   return session
 }
 
-function setupPlugin({ sessions } = {}) {
+function setupPlugin({ sessions, rejection } = {}) {
   let handler
   const ctx = {
     sessions: {
@@ -104,7 +104,7 @@ function setupPlugin({ sessions } = {}) {
       list: () => [...sessions.values()],
     },
     webServer: { register: (route) => { handler = route.handler } },
-    connection: { requestRejection: () => undefined },
+    connection: { requestRejection: () => rejection },
     effect: (fn) => fn(),
     logger: { warn: () => {} },
   }
@@ -258,4 +258,10 @@ test('host 0.1.5 shape (snapshotEvents, no events property) drives the full flow
   assert.equal(after.payload.entries.length, 2) // 剩 tool/result + 替换 marker
   const marker = after.payload.entries.find((e) => e.sourcePlugin === '@weibaohui/context-razor')
   assert.ok(marker, 'replacement marker visible on the surface')
+})
+
+test('every route sits behind the connection trust fence', async () => {
+  const env = setupPlugin({ rejection: 401 })
+  const res = await env.call('GET', '/context-razor/api/sessions')
+  assert.equal(res.status, 401, 'unauthenticated listing is refused before any work')
 })

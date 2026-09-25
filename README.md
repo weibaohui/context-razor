@@ -33,3 +33,13 @@ dsh 会话是 append-only 事件日志（深冻结 + zstd 校验），物理删�
 ## 联系我 :飞书群
 
 ![飞书群](https://foruda.gitee.com/images/1774880015525784725/4fd67005_77493.png)
+
+## 版本兼容性
+
+本插件与 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`@deepseek-ai/dsh`）的版本对应关系：
+
+| 插件版本 | 适配 dsh 版本 | 备注 |
+|---------|--------------|------|
+| 0.4.5 | 0.1.7-rc.2 | 当前版本，已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
+
+> **发版约定**：每次发布新版本时，请在上表追加一行，记录该插件版本实际验证所用的 `@deepseek-ai/dsh` 版本。`package.json` 的 `engines.dsh` 声明最低支持版本；本表记录实际验证版本，二者配合使用。
