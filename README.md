@@ -5,7 +5,7 @@
 
 **上下文剃刀**：把当前会话上下文逐条列出来——角色、预览、≈token（cl100k_base 估算，与技能市场同词表）——超阈值标红，勾选后精确裁剪。压缩不知道裁了什么，剃刀让你自己挑。
 
-![上下文剃刀：逐条 token + 精确裁剪](docs/demo.gif)
+![上下文剃刀：逐条 token + 精确裁剪](https://raw.githubusercontent.com/weibaohui/context-razor/main/docs/demo.gif)
 
 ## 核心功能
 
