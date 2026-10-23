@@ -76,6 +76,22 @@ function entryKindOf(type) {
 }
 
 /**
+ * 把消息 source 投影成 {kind, form, plugin}：v3 裸包装（kind:'plugin', plugin:'x'）
+ * 与 format v4 producer-owned（kind:'plugin:<x>'，dsh-kb#1 修复后的写法）都归一化为
+ * sourceKind 'plugin' + sourcePlugin '<x>'——不归一化的话新行会投影成
+ * sourceKind:'plugin:<x>'、sourcePlugin undefined。非 plugin 具名 kind（'user' 等）原样。
+ */
+function projectSource(source) {
+  if (!source || typeof source !== 'object') return undefined
+  const kind = typeof source.kind === 'string' ? source.kind : undefined
+  if (kind && kind.startsWith('plugin:')) {
+    const producer = kind.slice('plugin:'.length)
+    return { kind: 'plugin', form: source.form, plugin: producer || undefined }
+  }
+  return { kind, form: source.form, plugin: source.plugin }
+}
+
+/**
  * 会话全部事件的兼容读取：宿主 0.1.5 起 Session 移除了 `events` 属性
  * （`snapshotEvents()` / `eventAt()` 取代），旧宿主仍是数组属性——两个
  * 形状都接住，快照在下次 append 前有缓存，逐遍扫描的开销可接受。
@@ -121,7 +137,7 @@ function projectContext(session) {
     const { tokens, mode: m } = countTokens(text)
     mode = m
     const usage = event.type === 'assistant/message' ? event.data.usage : undefined
-    const source = event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined
+    const source = projectSource(event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined)
     entries.push({
       seq,
       kind: entryKindOf(event.type),
@@ -185,9 +201,11 @@ function deleteEntries(session, wantedSeqs) {
       shadowedTokenCount: runTokens,
     })
     const summary = `已删除 ${run.length} 条历史（约 ${runTokens} token）`
+    // v3 裸包装 {kind:'plugin', plugin:…} 在 format v4 宿主写路径抛 SessionFormatError
+    // （同 dsh-kb#1），producer-owned 写法 kind:'plugin:<名>'；form/summary 附加字段保留
     const marker = createUserMessage({
       content: [{ type: 'text', text: `[context-razor] 此处原有 ${run.length} 条历史消息（约 ${runTokens} token）已被用户删除以保持上下文聚焦；如后续对话需要被删部分的细节，请向用户确认。` }],
-      source: { kind: 'plugin', plugin: RAZOR_PLUGIN_NAME, form: 'notice', summary },
+      source: { kind: `plugin:${RAZOR_PLUGIN_NAME}`, form: 'notice', summary },
     })
     const replacement = session.append('user/message', marker, {
       surfaceOp: { op: 'replace', start, end },
@@ -307,7 +325,7 @@ module.exports = {
             const toolName = event.type === 'tool/result' && event.data.message
               ? eventsOf(session).find((candidate) => candidate.type === 'tool/call' && candidate.data.callId === event.data.message.source.callId)
               : undefined
-            const source = event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined
+            const source = projectSource(event.type === 'user/message' && event.data.source && typeof event.data.source === 'object' ? event.data.source : undefined)
             sendJson(200, {
               seq,
               kind: entryKindOf(event.type),

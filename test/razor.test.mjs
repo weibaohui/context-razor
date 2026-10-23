@@ -177,6 +177,28 @@ test('GET /context projects every surface entry with tokens, tool name and sourc
   assert.equal(unknown.status, 404)
 })
 
+test('GET /context normalizes format v4 producer-owned source kind (dsh-kb#1 write shape)', async () => {
+  // v4 宿主上插件新写入是 kind:'plugin:<名>'（裸包装已退役）——投影必须归一化出
+  // sourceKind 'plugin' + sourcePlugin '<名>'，而不是把整串当 kind、plugin 丢成 undefined
+  const events = demoEvents().concat([
+    { type: 'user/message', data: { id: 'inj4', role: 'user', content: [{ type: 'text', text: 'notice marker' }], source: { kind: 'plugin:@weibaohui/context-razor', form: 'notice', summary: '已删除 1 条历史' } } },
+  ])
+  const s = fakeSession({ id: 's-v4', events })
+  const { call } = setupPlugin({ sessions: new Map([[s.id, s]]) })
+  const res = await call('GET', '/context-razor/api/context?session=s-v4')
+  assert.equal(res.status, 200)
+  const injected = res.payload.entries.find((e) => e.sourceKind === 'plugin')
+  assert.ok(injected, 'producer-owned row must project sourceKind plugin')
+  assert.equal(injected.sourcePlugin, '@weibaohui/context-razor')
+  assert.equal(injected.sourceForm, 'notice')
+  // 详情端点同款投影（/api/entry?session=&seq=）
+  const seq = injected.seq
+  const detail = await call('GET', `/context-razor/api/entry?session=s-v4&seq=${seq}`)
+  assert.equal(detail.status, 200)
+  assert.equal(detail.payload.sourceKind, 'plugin')
+  assert.equal(detail.payload.sourcePlugin, '@weibaohui/context-razor')
+})
+
 test('POST /delete shadows one contiguous run via prune + replace', async () => {
   const s = fakeSession({ id: 's-del', events: demoEvents() })
   const { call } = setupPlugin({ sessions: new Map([[s.id, s]]) })
@@ -197,8 +219,8 @@ test('POST /delete shadows one contiguous run via prune + replace', async () => 
   assert.equal(replace.type, 'user/message')
   assert.deepEqual(replace.surfaceOp, { op: 'replace', start: 2, end: 3 })
   assert.deepEqual(replace.sourceEventSeqs, [2, 3])
-  assert.equal(replace.data.source.kind, 'plugin')
-  assert.equal(replace.data.source.plugin, '@weibaohui/context-razor')
+  // dsh-kb#1：v4 宿主写路径必须是 producer-owned kind:'plugin:<名>'，裸包装会抛 SessionFormatError
+  assert.equal(replace.data.source.kind, 'plugin:@weibaohui/context-razor')
   assert.equal(replace.data.source.form, 'notice')
   assert.match(replace.data.source.summary, /已删除 2 条/)
   assert.match(replace.data.content[0].text, /已被用户删除/)
