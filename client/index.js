@@ -132,7 +132,14 @@ const EN = {
 
 // ── Pure helpers ────────────────────────────────────────────────────────
 
-const API = '/context-razor/api'
+// API 基址随页面走：子路径反代（如 https://host/app/dsh/）下，绝对路径 /context-razor/api
+// 会打到站点根而 404。与宿主官方客户端一致，用 document.baseURI 推导（dsh-sync#14 同款）。
+const API = (() => {
+  try {
+    const base = (typeof document !== 'undefined' && document.baseURI) || (typeof location !== 'undefined' ? location.href : '/')
+    return new URL('context-razor/api', new URL('.', base)).pathname.replace(/\/+$/, '')
+  } catch { return '/context-razor/api' }
+})()
 const PAGE_SIZE = 150
 
 const kindI18n = (key) => 'kind' + key[0].toUpperCase() + key.slice(1)
