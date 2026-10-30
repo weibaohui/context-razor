@@ -28,7 +28,7 @@ dsh plugin --profile web add @weibaohui/context-razor -w
 
 ## 删除的实现方式
 
-dsh 会话是 append-only 事件日志（深冻结 + zstd 校验），物理删除不存在也不必要。本插件的裁剪 = 仿官方 `dsh-compaction-tool-result-pruner` 协议：对每个连续段追加一条 `compaction/prune` 计价事件 + 一条带 `surfaceOp: {op:'replace'}` 的 notice 标记消息（`sourceEventSeqs` 覆盖全部被影子化节点）。被删节点从此不进 `deriveMessages()`——模型看不到、UI 不再渲染、token 不再计入上下文，而日志留痕可审计。
+dsh 会话是 append-only 事件日志（深冻结 + zstd 校验），物理删除不存在也不必要。本插件的裁剪 = 仿官方 `dsh-compaction-tool-result-pruner` 协议：对每个连续段追加一条 `compaction/prune` 计价事件 + 一条带 `surfaceOp: { op:'replace', startSeq, endSeq }` 的 notice 标记消息（宿主 `isReplaceOp` 严格校验恰好三键 `op`/`startSeq`/`endSeq`，0.4.10 修复，issue #6；`sourceEventSeqs` 覆盖全部被影子化节点）。被删节点从此不进 `deriveMessages()`——模型看不到、UI 不再渲染、token 不再计入上下文，而日志留痕可审计。
 
 ## 联系我 :飞书群
 
@@ -40,6 +40,7 @@ dsh 会话是 append-only 事件日志（深冻结 + zstd 校验），物理删�
 
 | 插件版本 | 适配 dsh 版本 | 备注 |
 |---------|--------------|------|
-| 0.4.5 | 0.1.7-rc.2 | 当前版本，已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
+| 0.4.10 | 0.2.1-rc.2 | 修复 issue #6：裁剪 surfaceOp 改用宿主 `isReplaceOp` 的严格键名 `{ op, startSeq, endSeq }`——旧写法 `start`/`end` 因 `hasOwn('startSeq')` 为 false 直接抛 `invalid replace surfaceOp`，整次裁剪中断（0.4.8/0.4.9 均中招）；已在 @deepseek-ai/dsh@0.2.1-rc.2 下核对 `dsh-session` 的 `isReplaceOp` 源码，单测复刻同款严格键名校验（23 项通过） |
+| 0.4.5 | 0.1.7-rc.2 | 已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
 
 > **发版约定**：每次发布新版本时，请在上表追加一行，记录该插件版本实际验证所用的 `@deepseek-ai/dsh` 版本。`package.json` 的 `engines.dsh` 声明最低支持版本；本表记录实际验证版本，二者配合使用。
