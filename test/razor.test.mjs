@@ -78,8 +78,12 @@ function fakeSession({ id = 's-1', cwd = '/tmp/demo', events = [], nodes = null,
       const op = opts.surfaceOp
       if (eligible && op === undefined) throw new Error(`session event "${type}" is surface-eligible and requires a surfaceOp marker`)
       if (eligible && op && op.op === 'replace') {
-        const idxStart = surface.nodes.indexOf(op.start)
-        const idxEnd = surface.nodes.indexOf(op.end)
+        // 复刻宿主 isReplaceOp 的严格键名校验（issue #6）：恰好三键 op/startSeq/endSeq
+        if (Object.keys(op).length !== 3 || !Object.hasOwn(op, 'op') || !Object.hasOwn(op, 'startSeq') || !Object.hasOwn(op, 'endSeq')) {
+          throw new Error(`session event "${type}" carries an invalid replace surfaceOp`)
+        }
+        const idxStart = surface.nodes.indexOf(op.startSeq)
+        const idxEnd = surface.nodes.indexOf(op.endSeq)
         if (idxStart === -1 || idxEnd === -1 || idxStart > idxEnd) throw new Error('surface replace: invalid range')
         const shadowed = surface.nodes.slice(idxStart, idxEnd + 1)
         for (const need of shadowed) if (!opts.sourceEventSeqs.includes(need)) throw new Error('sourceEventSeqs must include every shadowed surface node')
@@ -217,7 +221,11 @@ test('POST /delete shadows one contiguous run via prune + replace', async () => 
   assert.deepEqual(prune.data.shadowedRange, { start: 2, end: 3 })
   assert.equal(prune.data.shadowedTokenCount, run.tokens)
   assert.equal(replace.type, 'user/message')
-  assert.deepEqual(replace.surfaceOp, { op: 'replace', start: 2, end: 3 })
+  // issue #6：宿主 isReplaceOp 只接受恰好三键 op/startSeq/endSeq（start/end 键名直接抛
+  // invalid replace surfaceOp），且两个 seq 必须过 isEventSeq 校验
+  assert.deepEqual(replace.surfaceOp, { op: 'replace', startSeq: 2, endSeq: 3 })
+  assert.deepEqual(Object.keys(replace.surfaceOp).sort(), ['endSeq', 'op', 'startSeq'])
+  assert.ok(Number.isSafeInteger(replace.surfaceOp.startSeq) && Number.isSafeInteger(replace.surfaceOp.endSeq))
   assert.deepEqual(replace.sourceEventSeqs, [2, 3])
   // dsh-kb#1：v4 宿主写路径必须是 producer-owned kind:'plugin:<名>'，裸包装会抛 SessionFormatError
   assert.equal(replace.data.source.kind, 'plugin:@weibaohui/context-razor')

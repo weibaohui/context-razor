@@ -207,8 +207,10 @@ function deleteEntries(session, wantedSeqs) {
       content: [{ type: 'text', text: `[context-razor] 此处原有 ${run.length} 条历史消息（约 ${runTokens} token）已被用户删除以保持上下文聚焦；如后续对话需要被删部分的细节，请向用户确认。` }],
       source: { kind: `plugin:${RAZOR_PLUGIN_NAME}`, form: 'notice', summary },
     })
+    // 宿主 isReplaceOp 严格校验：恰好三键 op/startSeq/endSeq（键名 start/end
+    // 会因 hasOwn('startSeq') 为 false 抛 invalid replace surfaceOp，0.2.x 实测）
     const replacement = session.append('user/message', marker, {
-      surfaceOp: { op: 'replace', start, end },
+      surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
       sourceEventSeqs: run,
     })
     done.push({ start, end, count: run.length, tokens: runTokens, replacement: replacement.seq })
